@@ -1,4 +1,4 @@
-local Painting = loadstring(game:HttpGet('https://raw.githubusercontent.com/LionTheGreatRealFrFr/Assets/refs/heads/main/DrawingLib')
+local Painting = loadstring(game:HttpGet('https://raw.githubusercontent.com/LionTheGreatRealFrFr/Assets/refs/heads/main/DrawingLib'))()
 
 local Library = {};
 
