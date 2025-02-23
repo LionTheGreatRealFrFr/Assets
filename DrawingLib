@@ -6,6 +6,15 @@
 	drawingUI.DisplayOrder = 0x7fffffff
 	drawingUI.Parent = gethui()
 	-- variables
+	local function ApplyGradient(parent, colorSequence, rotation)
+		local gradient = parent:FindFirstChild("Gradient") or Instance.new("UIGradient")
+		gradient.Name = "Gradient"
+		gradient.Color = colorSequence
+		gradient.Rotation = rotation or 0
+		gradient.Parent = parent
+		return gradient
+	end
+
 	local drawingIndex = 0
 	local uiStrokes = table.create(0)
 	local baseDrawingObj = setmetatable({
@@ -78,8 +87,15 @@
 				__newindex = function(_, index, value)
 					if typeof(lineObj[index]) == "nil" then return end
 
-
-					if index == "From" then
+					if index == "Gradient" then
+						if typeof(value) == "ColorSequence" then
+							ApplyGradient(lineFrame, value, 0)
+						elseif typeof(value) == "table" and value.Color and value.Rotation then
+							ApplyGradient(lineFrame, value.Color, value.Rotation)
+						else
+							error("Invalid Gradient format. Use ColorSequence or { Color = ColorSequence, Rotation = number }")
+						end
+					elseif index == "From" then
 						local direction = (lineObj.To - value)
 						local center = (lineObj.To + value) / 2
 						local distance = direction.Magnitude
@@ -251,7 +267,15 @@
 				__newindex = function(_, index, value)
 					if typeof(circleObj[index]) == "nil" then return end
 
-					if index == "Radius" then
+					if index == "Gradient" then
+						if typeof(value) == "ColorSequence" then
+							ApplyGradient(circleFrame, value, 0)
+						elseif typeof(value) == "table" and value.Color and value.Rotation then
+							ApplyGradient(circleFrame, value.Color, value.Rotation)
+						else
+							error("Invalid Gradient format. Use ColorSequence or { Color = ColorSequence, Rotation = number }")
+						end
+					elseif index == "Radius" then
 						local radius = value * 2
 						circleFrame.Size = UDim2.fromOffset(radius, radius)
 					elseif index == "Position" then
@@ -318,7 +342,15 @@
 				__newindex = function(_, index, value)
 					if typeof(squareObj[index]) == "nil" then return end
 
-					if index == "Size" then
+					if index == "Gradient" then
+						if typeof(value) == "ColorSequence" then
+							ApplyGradient(squareFrame, value, 0)
+						elseif typeof(value) == "table" and value.Color and value.Rotation then
+							ApplyGradient(squareFrame, value.Color, value.Rotation)
+						else
+							error("Invalid Gradient format. Use ColorSequence or { Color = ColorSequence, Rotation = number }")
+						end
+					elseif index == "Size" then
 						squareFrame.Size = UDim2.fromOffset(value.X, value.Y)
 					elseif index == "Position" then
 						squareFrame.Position = UDim2.fromOffset(value.X, value.Y)
