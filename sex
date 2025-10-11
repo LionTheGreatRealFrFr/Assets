@@ -3102,77 +3102,91 @@ do
             end
         end
 
-        local Debounce = false
+local Debounce = false
 
-        function Page:Turn(Bool)
-            if Debounce or Page.Active == Bool then
-                return
-            end
+function Page:Turn(Bool)
+    if Debounce then
+        return
+    end
 
-            Page.Active = Bool
-            Debounce = true
+    Debounce = true
+    Page.Active = Bool
 
-            local FadeSpeed = Page.Window.FadeSpeed or 0.5
-            local Theme = Library.Theme
-            local PageItem = Items['Page'].Instance
-            local TextItem = Items['Text']
-            local HideItem = Items['Hide'].Instance
+    local PageItem = Items['Page'].Instance
+    local TextItem = Items['Text']
+    local HideItem = Items['Hide'].Instance
+    local Theme = Library.Theme
+    local FadeSpeed = Page.Window.FadeSpeed or 0.5
 
-            if Bool then
-                PageItem.Visible = true
-                TextItem:Tween(nil, { TextColor3 = Theme.Accent, TextTransparency = 0 })
-                HideItem.Visible = true
-                TextItem:ChangeItemTheme({ TextColor3 = 'Accent' })
-            else
-                TextItem:Tween(nil, { TextColor3 = Theme.Text, TextTransparency = 0.5 })
-                HideItem.Visible = false
-                TextItem:ChangeItemTheme({ TextColor3 = 'Text' })
-            end
+    if Bool then
+        PageItem.Visible = true
+        HideItem.Visible = true
+        TextItem:Tween(nil, { TextColor3 = Theme.Accent, TextTransparency = 0 })
+        TextItem:ChangeItemTheme({ TextColor3 = 'Accent' })
+    else
+        HideItem.Visible = false
+        TextItem:Tween(nil, { TextColor3 = Theme.Text, TextTransparency = 0.5 })
+        TextItem:ChangeItemTheme({ TextColor3 = 'Text' })
+    end
 
-            local Descendants = PageItem:GetDescendants()
-            TableInsert(Descendants, PageItem)
+    local Descendants = PageItem:GetDescendants()
+    local Count = #Descendants
+    Descendants[Count + 1] = PageItem
 
-            local FadeTasks = table.create(#Descendants)
-            for _, Value in ipairs(Descendants) do
-                local ValueIndex = Library:GetTransparencyPropertyFromItem(Value)
-                if not ValueIndex then
-                    continue
-                end
+    local FadeItem = Library.FadeItem
+    local GetTransparencyProperty = Library.GetTransparencyPropertyFromItem
+    local TweenGroup = {}
 
-                if type(ValueIndex) == 'table' then
-                    for _, Property in ipairs(ValueIndex) do
-                        local NewTween = Library:FadeItem(Value, Property, Bool, FadeSpeed)
-                        if NewTween and NewTween.Tween then
-                            table.insert(FadeTasks, NewTween.Tween)
-                        end
-                    end
-                else
-                    local NewTween = Library:FadeItem(Value, ValueIndex, Bool, FadeSpeed)
-                    if NewTween and NewTween.Tween then
-                        table.insert(FadeTasks, NewTween.Tween)
-                    end
+    for i = 1, Count + 1 do
+        local Value = Descendants[i]
+        local Props = GetTransparencyProperty(Library, Value)
+        if not Props then
+            continue
+        end
+
+        if type(Props) == "table" then
+            for j = 1, #Props do
+                local Tween = FadeItem(Library, Value, Props[j], Bool, FadeSpeed)
+                if Tween and Tween.Tween then
+                    TweenGroup[#TweenGroup + 1] = Tween.Tween
                 end
             end
+        else
+            local Tween = FadeItem(Library, Value, Props, Bool, FadeSpeed)
+            if Tween and Tween.Tween then
+                TweenGroup[#TweenGroup + 1] = Tween.Tween
+            end
+        end
+    end
 
-            task.spawn(function()
-                for _, Tween in ipairs(FadeTasks) do
-                    Tween.Completed:Wait()
+    if #TweenGroup > 0 then
+        local Completed = 0
+        local Total = #TweenGroup
+
+        for i = 1, Total do
+            Library:Connect(TweenGroup[i].Completed, function()
+                Completed += 1
+                if Completed >= Total then
+                    Debounce = false
+                    PageItem.Visible = Bool
                 end
-                Debounce = false
-                PageItem.Visible = Bool
             end)
         end
+    else
+        Debounce = false
+        PageItem.Visible = Bool
+    end
+end
 
-        Items['Inactive']:Connect('MouseButton1Down', function()
-            for Index, Value in Page.Window.Pages do
-                Value:Turn(Value == Page)
-            end
-        end)
+Items['Inactive']:Connect('MouseButton1Down', function()
+    for _, Value in Page.Window.Pages do
+        Value:Turn(Value == Page)
+    end
+end)
 
-        if #Page.Window.Pages == 0 then
-            Page:Turn(true)
-        end
-
+if #Page.Window.Pages == 0 then
+    Page:Turn(true)
+end
 
         Page.Elements = Items
 
@@ -5713,12 +5727,6 @@ do
         return Listbox
     end
 end
---
-local Window = Library:Window({
-    Name = 'you can change the name here',
-    --Size = UDim2.new(0, 600, 0, 400),
-    FadeSpeed = 0.25,
-})
 --
 getgenv().Library = Library
 return Library
