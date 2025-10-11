@@ -3116,26 +3116,26 @@ function Page:Turn(Bool)
     local TextItem = Items['Text']
     local HideItem = Items['Hide'].Instance
     local Theme = Library.Theme
-    local FadeSpeed = Page.Window.FadeSpeed or 0.5
 
     if Bool then
         PageItem.Visible = true
         HideItem.Visible = true
-        TextItem:Tween(nil, { TextColor3 = Theme.Accent, TextTransparency = 0 })
+        TextItem.Instance.TextColor3 = Theme.Accent
+        TextItem.Instance.TextTransparency = 0
         TextItem:ChangeItemTheme({ TextColor3 = 'Accent' })
     else
         HideItem.Visible = false
-        TextItem:Tween(nil, { TextColor3 = Theme.Text, TextTransparency = 0.5 })
+        TextItem.Instance.TextColor3 = Theme.Text
+        TextItem.Instance.TextTransparency = 0.5
         TextItem:ChangeItemTheme({ TextColor3 = 'Text' })
     end
 
+    -- instantly set transparency for all descendants (no tweens)
     local Descendants = PageItem:GetDescendants()
     local Count = #Descendants
     Descendants[Count + 1] = PageItem
 
-    local FadeItems = {}
     local GetTransparencyProperty = Library.GetTransparencyPropertyFromItem
-
     for i = 1, Count + 1 do
         local Value = Descendants[i]
         local Props = GetTransparencyProperty(Library, Value)
@@ -3145,36 +3145,17 @@ function Page:Turn(Bool)
         if type(Props) ~= "table" then
             Props = { Props }
         end
-
         for j = 1, #Props do
             local Property = Props[j]
-            local current = Value[Property]
-            if typeof(current) == "number" then
-                FadeItems[#FadeItems + 1] = { Value, Property, current }
+            if Bool then
+                Value[Property] = 0
+            else
+                Value[Property] = 1
             end
         end
     end
 
-    local Start = tick()
-    local RunService = game:GetService("RunService")
-
-    local Connection
-    Connection = RunService.Heartbeat:Connect(function()
-        local alpha = math.clamp((tick() - Start) / FadeSpeed, 0, 1)
-        local progress = Bool and alpha or (1 - alpha)
-
-        for i = 1, #FadeItems do
-            local Value, Property, Base = unpack(FadeItems[i])
-            local target = Bool and 0 or 1
-            Value[Property] = Base + (target - Base) * progress
-        end
-
-        if alpha >= 1 then
-            Connection:Disconnect()
-            Debounce = false
-            PageItem.Visible = Bool
-        end
-    end)
+    Debounce = false
 end
 
 Items['Inactive']:Connect('MouseButton1Down', function()
