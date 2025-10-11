@@ -549,8 +549,8 @@ do
 
             self:Connect('InputBegan', function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseButton1
-                    or Input.UserInputType == Enum.UserInputType.Touch
+                    Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch
+
                 then
                     Dragging = true
 
@@ -561,8 +561,8 @@ do
 
             self:Connect('InputEnded', function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseButton1
-                    or Input.UserInputType == Enum.UserInputType.Touch
+                    Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch
+
                 then
                     Dragging = false
                 end
@@ -570,8 +570,8 @@ do
 
             Library:Connect(UserInputService.InputChanged, function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseMovement
-                    or Input.UserInputType == Enum.UserInputType.Touch
+                    Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch
+
                 then
                     if Dragging then
                         Set(Input)
@@ -610,8 +610,8 @@ do
 
             ResizeButton:Connect('InputBegan', function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseButton1
-                    or Input.UserInputType == Enum.UserInputType.Touch
+                    Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch
+
                 then
                     Resizing = true
 
@@ -622,8 +622,8 @@ do
 
             ResizeButton:Connect('InputEnded', function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseButton1
-                    or Input.UserInputType == Enum.UserInputType.Touch
+                    Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch
+
                 then
                     Resizing = false
                 end
@@ -631,7 +631,7 @@ do
 
             Library:Connect(UserInputService.InputChanged, function(Input)
                 if
-                    Input.UserInputType == Enum.UserInputType.MouseMovement
+                    Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch
                     and Resizing
                 then
                     ResizeMax = Maximum
@@ -2152,46 +2152,46 @@ do
         end)
 
         Items['Palette']:Connect('InputBegan', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingPalette = true
                 Colorpicker:SlidePalette(Input)
             end
         end)
 
         Items['Palette']:Connect('InputEnded', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingPalette = false
             end
         end)
 
         Items['Hue']:Connect('InputBegan', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingHue = true
                 Colorpicker:SlideHue(Input)
             end
         end)
 
         Items['Hue']:Connect('InputEnded', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingHue = false
             end
         end)
 
         Items['Alpha']:Connect('InputBegan', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingAlpha = true
                 Colorpicker:SlideAlpha(Input)
             end
         end)
 
         Items['Alpha']:Connect('InputEnded', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 SlidingAlpha = false
             end
         end)
 
         Library:Connect(UserInputService.InputChanged, function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseMovement then
+            if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
                 if SlidingPalette then
                     Colorpicker:SlidePalette(Input)
                 end
@@ -2207,7 +2207,7 @@ do
         end)
 
         Library:Connect(UserInputService.InputBegan, function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 if Library:IsMouseOverFrame(Items['ColorpickerWindow']) then
                     return
                 end
@@ -2634,7 +2634,7 @@ do
                 end
             end
 
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 if Library:IsMouseOverFrame(Items['Window']) then
                     return
                 end
@@ -3133,9 +3133,8 @@ function Page:Turn(Bool)
     local Count = #Descendants
     Descendants[Count + 1] = PageItem
 
-    local FadeItem = Library.FadeItem
+    local FadeItems = {}
     local GetTransparencyProperty = Library.GetTransparencyPropertyFromItem
-    local TweenGroup = {}
 
     for i = 1, Count + 1 do
         local Value = Descendants[i]
@@ -3143,39 +3142,39 @@ function Page:Turn(Bool)
         if not Props then
             continue
         end
+        if type(Props) ~= "table" then
+            Props = { Props }
+        end
 
-        if type(Props) == "table" then
-            for j = 1, #Props do
-                local Tween = FadeItem(Library, Value, Props[j], Bool, FadeSpeed)
-                if Tween and Tween.Tween then
-                    TweenGroup[#TweenGroup + 1] = Tween.Tween
-                end
-            end
-        else
-            local Tween = FadeItem(Library, Value, Props, Bool, FadeSpeed)
-            if Tween and Tween.Tween then
-                TweenGroup[#TweenGroup + 1] = Tween.Tween
+        for j = 1, #Props do
+            local Property = Props[j]
+            local current = Value[Property]
+            if typeof(current) == "number" then
+                FadeItems[#FadeItems + 1] = { Value, Property, current }
             end
         end
     end
 
-    if #TweenGroup > 0 then
-        local Completed = 0
-        local Total = #TweenGroup
+    local Start = tick()
+    local RunService = game:GetService("RunService")
 
-        for i = 1, Total do
-            Library:Connect(TweenGroup[i].Completed, function()
-                Completed += 1
-                if Completed >= Total then
-                    Debounce = false
-                    PageItem.Visible = Bool
-                end
-            end)
+    local Connection
+    Connection = RunService.Heartbeat:Connect(function()
+        local alpha = math.clamp((tick() - Start) / FadeSpeed, 0, 1)
+        local progress = Bool and alpha or (1 - alpha)
+
+        for i = 1, #FadeItems do
+            local Value, Property, Base = unpack(FadeItems[i])
+            local target = Bool and 0 or 1
+            Value[Property] = Base + (target - Base) * progress
         end
-    else
-        Debounce = false
-        PageItem.Visible = Bool
-    end
+
+        if alpha >= 1 then
+            Connection:Disconnect()
+            Debounce = false
+            PageItem.Visible = Bool
+        end
+    end)
 end
 
 Items['Inactive']:Connect('MouseButton1Down', function()
@@ -4657,14 +4656,14 @@ end
         end)
 
         Items['RealSlider']:Connect('InputEnded', function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Slider.Sliding = false
             end
         end)
 
         Library:Connect(UserInputService.InputChanged, function(Input)
             if
-                Input.UserInputType == Enum.UserInputType.MouseMovement
+                Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch
                 and Slider.Sliding
             then
                 local MousePos = UserInputService:GetMouseLocation()
