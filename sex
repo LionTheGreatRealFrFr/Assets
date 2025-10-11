@@ -3102,83 +3102,61 @@ do
             end
         end
 
-        local Debounce = false
+local Debounce = false
 
-        function Page:Turn(Bool)
-            if Debounce then
-                return
-            end
+function Page:Turn(Bool)
+    if Debounce then
+        return
+    end
 
-            Page.Active = Bool
+    Page.Active = Bool
+    Debounce = true
 
-            Debounce = true
+    if Bool then
+        Items['Page'].Instance.Visible = true
+        Items['Text'].Instance.TextColor3 = Library.Theme.Accent
+        Items['Text'].Instance.TextTransparency = 0
+        Items['Hide'].Instance.Visible = true
+        Items['Text']:ChangeItemTheme({ TextColor3 = 'Accent' })
+    else
+        Items['Text'].Instance.TextColor3 = Library.Theme.Text
+        Items['Text'].Instance.TextTransparency = 0.5
+        Items['Hide'].Instance.Visible = false
+        Items['Text']:ChangeItemTheme({ TextColor3 = 'Text' })
+    end
 
-            if Bool then
-                Items['Page'].Instance.Visible = true
+    local Descendants = Items['Page'].Instance:GetDescendants()
+    TableInsert(Descendants, Items['Page'].Instance)
 
-                Items['Text']:Tween(
-                    nil,
-                    { TextColor3 = Library.Theme.Accent, TextTransparency = 0 }
-                )
-                Items['Hide'].Instance.Visible = true
-
-                Items['Text']:ChangeItemTheme({ TextColor3 = 'Accent' })
-            else
-                Items['Text']:Tween(
-                    nil,
-                    { TextColor3 = Library.Theme.Text, TextTransparency = 0.5 }
-                )
-                Items['Hide'].Instance.Visible = false
-
-                Items['Text']:ChangeItemTheme({ TextColor3 = 'Text' })
-            end
-
-            local Descendants = Items['Page'].Instance:GetDescendants()
-            TableInsert(Descendants, Items['Page'].Instance)
-
-            local NewTween
-            for Index, Value in Descendants do
-                local ValueIndex =
-                    Library:GetTransparencyPropertyFromItem(Value)
-
-                if not ValueIndex then
-                    continue
-                end
-
-                if type(ValueIndex) == 'table' then
-                    for _, Property in ValueIndex do
-                        NewTween = Library:FadeItem(
-                            Value,
-                            Property,
-                            Bool,
-                            0
-                        )
-                    end
-                else
-                    NewTween = Library:FadeItem(
-                        Value,
-                        ValueIndex,
-                        Bool,
-                        0
-                    )
-                end
-            end
-
-            Library:Connect(NewTween.Tween.Completed, function()
-                Debounce = false
-                Items['Page'].Instance.Visible = Bool
-            end)
+    for Index, Value in Descendants do
+        local ValueIndex = Library:GetTransparencyPropertyFromItem(Value)
+        if not ValueIndex then
+            continue
         end
 
-        Items['Inactive']:Connect('MouseButton1Down', function()
-            for Index, Value in Page.Window.Pages do
-                Value:Turn(Value == Page)
+        if type(ValueIndex) == 'table' then
+            for _, Property in ValueIndex do
+                Library:SetItemTransparency(Value, Property, Bool and 0 or 1)
             end
-        end)
-
-        if #Page.Window.Pages == 0 then
-            Page:Turn(true)
+        else
+            Library:SetItemTransparency(Value, ValueIndex, Bool and 0 or 1)
         end
+    end
+
+    Debounce = false
+    Items['Page'].Instance.Visible = Bool
+end
+
+Items['Inactive']:Connect('MouseButton1Down', function()
+    for Index, Value in Page.Window.Pages do
+        Value:Turn(Value == Page)
+    end
+end)
+
+if #Page.Window.Pages == 0 then
+    Page:Turn(true)
+end
+
 
         Page.Elements = Items
 
