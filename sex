@@ -3103,6 +3103,29 @@ do
         end
 
 local Debounce = false
+local TransparencyCache = {}
+
+function Page:CacheTransparencyData()
+    if TransparencyCache[self] then
+        return TransparencyCache[self]
+    end
+
+    local ItemsPage = Items["Page"].Instance
+    local Descendants = ItemsPage:GetDescendants()
+    Descendants[#Descendants + 1] = ItemsPage
+
+    local Cached = {}
+
+    for _, Obj in ipairs(Descendants) do
+        local TransparencyProps = Library:GetTransparencyPropertyFromItem(Obj)
+        if TransparencyProps then
+            Cached[#Cached + 1] = { Obj, TransparencyProps }
+        end
+    end
+
+    TransparencyCache[self] = Cached
+    return Cached
+end
 
 function Page:Turn(Bool)
     if Debounce then
@@ -3131,38 +3154,36 @@ function Page:Turn(Bool)
         TextItem:ChangeItemTheme({ TextColor3 = "Text" })
     end
 
-    -- Pre-cache once
-    local Descendants = ItemsPage:GetDescendants()
-    Descendants[#Descendants + 1] = ItemsPage
+    -- Use cached transparency data instead of recalculating every time
+    local Cached = self:CacheTransparencyData()
 
-    -- Collect tweens in one list to wait on only the last one
-    local LastTween
+    local Index = 1
+    local BatchSize = 25 -- tweak this depending on how heavy your UI is
+    local FadeSpeed = Page.Window.FadeSpeed or 0.5
 
-    for _, Obj in ipairs(Descendants) do
-        local TransparencyProps = Library:GetTransparencyPropertyFromItem(Obj)
-        if not TransparencyProps then
-            continue
-        end
-
-        if type(TransparencyProps) == "table" then
-            for _, Prop in ipairs(TransparencyProps) do
-                LastTween = Library:FadeItem(Obj, Prop, Bool, FadeSpeed)
+    -- Fade items in small chunks to avoid one-frame spike
+    task.spawn(function()
+        while Index <= #Cached do
+            local EndIndex = math.min(Index + BatchSize - 1, #Cached)
+            for i = Index, EndIndex do
+                local Obj, Props = Cached[i][1], Cached[i][2]
+                if type(Props) == "table" then
+                    for _, Prop in ipairs(Props) do
+                        Library:FadeItem(Obj, Prop, Bool, FadeSpeed)
+                    end
+                else
+                    Library:FadeItem(Obj, Props, Bool, FadeSpeed)
+                end
             end
-        else
-            LastTween = Library:FadeItem(Obj, TransparencyProps, Bool, FadeSpeed)
+            Index = EndIndex + 1
+            RunService.Heartbeat:Wait() -- yield one frame to spread out work
         end
-    end
 
-    -- Use just one completed connection instead of one per tween
-    if LastTween and LastTween.Tween then
-        LastTween.Tween.Completed:Once(function()
+        task.delay(FadeSpeed, function()
             Debounce = false
             ItemsPage.Visible = Bool
         end)
-    else
-        Debounce = false
-        ItemsPage.Visible = Bool
-    end
+    end)
 end
 
 Items["Inactive"]:Connect("MouseButton1Down", function()
@@ -3174,6 +3195,7 @@ end)
 if #Page.Window.Pages == 0 then
     Page:Turn(true)
 end
+
 
         Page.Elements = Items
 
