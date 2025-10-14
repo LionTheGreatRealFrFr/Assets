@@ -3103,6 +3103,7 @@ do
             end
         end
 
+local RunService = game:GetService('RunService')
 local Debounce = false
 local TransparencyCache = {}
 
@@ -3177,7 +3178,7 @@ function Page:Turn(Bool)
                 end
             end
             Index = EndIndex + 1
-            RunService.Heartbeat:Wait() -- yield one frame to spread out work
+            RunService.Heartbeat:Wait()
         end
 
         task.delay(FadeSpeed, function()
