@@ -3108,64 +3108,66 @@ function Page:Turn(Bool)
     if Debounce then
         return
     end
+
     Debounce = true
     Page.Active = Bool
 
     local FadeSpeed = Page.Window.FadeSpeed or 0.5
-    local PageInstance = Items["Page"].Instance
+    local ItemsPage = Items["Page"].Instance
     local TextItem = Items["Text"]
     local HideItem = Items["Hide"].Instance
+    local Theme = Library.Theme
 
-    -- Reduce redraw flicker
-    PageInstance.Visible = true
-    HideItem.Visible = Bool
-
-    -- Color/text updates (no delay)
     if Bool then
-        TextItem.Instance.TextColor3 = Library.Theme.Accent
-        TextItem.Instance.TextTransparency = 0
+        ItemsPage.Visible = true
+        HideItem.Visible = true
+
+        TextItem:Tween(nil, { TextColor3 = Theme.Accent, TextTransparency = 0 })
         TextItem:ChangeItemTheme({ TextColor3 = "Accent" })
     else
-        TextItem.Instance.TextColor3 = Library.Theme.Text
-        TextItem.Instance.TextTransparency = 0.5
+        HideItem.Visible = false
+
+        TextItem:Tween(nil, { TextColor3 = Theme.Text, TextTransparency = 0.5 })
         TextItem:ChangeItemTheme({ TextColor3 = "Text" })
     end
 
-    -- Pre-cache transparency data to avoid multiple function calls
-    local Descendants = PageInstance:GetDescendants()
-    Descendants[#Descendants + 1] = PageInstance
+    -- Pre-cache once
+    local Descendants = ItemsPage:GetDescendants()
+    Descendants[#Descendants + 1] = ItemsPage
 
-    local FadeTweens = {}
+    -- Collect tweens in one list to wait on only the last one
+    local LastTween
 
-    for _, Value in ipairs(Descendants) do
-        local Props = Library:GetTransparencyPropertyFromItem(Value)
-        if not Props then
+    for _, Obj in ipairs(Descendants) do
+        local TransparencyProps = Library:GetTransparencyPropertyFromItem(Obj)
+        if not TransparencyProps then
             continue
         end
 
-        if type(Props) ~= "table" then
-            Props = { Props }
-        end
-
-        for _, Property in ipairs(Props) do
-            local TweenInfo = TweenInfo.new(FadeSpeed, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-            local Target = { [Property] = Bool and 0 or 1 }
-
-            -- Cancel existing tweens to prevent buildup
-            TweenService:Create(Value, TweenInfo, Target):Play()
+        if type(TransparencyProps) == "table" then
+            for _, Prop in ipairs(TransparencyProps) do
+                LastTween = Library:FadeItem(Obj, Prop, Bool, FadeSpeed)
+            end
+        else
+            LastTween = Library:FadeItem(Obj, TransparencyProps, Bool, FadeSpeed)
         end
     end
 
-    -- Minimal delay reset after fade duration
-    task.delay(FadeSpeed, function()
+    -- Use just one completed connection instead of one per tween
+    if LastTween and LastTween.Tween then
+        LastTween.Tween.Completed:Once(function()
+            Debounce = false
+            ItemsPage.Visible = Bool
+        end)
+    else
         Debounce = false
-        PageInstance.Visible = Bool
-    end)
+        ItemsPage.Visible = Bool
+    end
 end
 
 Items["Inactive"]:Connect("MouseButton1Down", function()
-    for _, Value in ipairs(Page.Window.Pages) do
-        Value:Turn(Value == Page)
+    for _, PageObj in ipairs(Page.Window.Pages) do
+        PageObj:Turn(PageObj == Page)
     end
 end)
 
