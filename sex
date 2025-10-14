@@ -3103,7 +3103,8 @@ do
             end
         end
 
-local RunService = game:GetService('RunService')
+local RunService = game:GetService("RunService")
+
 local Debounce = false
 local TransparencyCache = {}
 
@@ -3156,14 +3157,19 @@ function Page:Turn(Bool)
         TextItem:ChangeItemTheme({ TextColor3 = "Text" })
     end
 
-    -- Use cached transparency data instead of recalculating every time
     local Cached = self:CacheTransparencyData()
-
     local Index = 1
-    local BatchSize = 25 -- tweak this depending on how heavy your UI is
+    local BatchSize = 25
     local FadeSpeed = Page.Window.FadeSpeed or 0.5
 
-    -- Fade items in small chunks to avoid one-frame spike
+    -- Instantly hide pages that are being turned off (so they don't linger)
+    if not Bool then
+        ItemsPage.Visible = false
+        Debounce = false
+        return
+    end
+
+    -- Fade in pages that are being turned on (smooth but fast)
     task.spawn(function()
         while Index <= #Cached do
             local EndIndex = math.min(Index + BatchSize - 1, #Cached)
@@ -3183,7 +3189,6 @@ function Page:Turn(Bool)
 
         task.delay(FadeSpeed, function()
             Debounce = false
-            ItemsPage.Visible = Bool
         end)
     end)
 end
@@ -3197,7 +3202,6 @@ end)
 if #Page.Window.Pages == 0 then
     Page:Turn(true)
 end
-
 
         Page.Elements = Items
 
