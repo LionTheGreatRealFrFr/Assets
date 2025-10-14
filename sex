@@ -3103,82 +3103,68 @@ do
         end
 
 local Debounce = false
-local TransparencyCache = {}
 
 function Page:Turn(Bool)
     if Debounce then
         return
     end
-
-    Page.Active = Bool
     Debounce = true
+    Page.Active = Bool
 
-    local PageInstance = Items['Page'].Instance
-    local TextItem = Items['Text']
-    local HideItem = Items['Hide'].Instance
+    local FadeSpeed = Page.Window.FadeSpeed or 0.5
+    local PageInstance = Items["Page"].Instance
+    local TextItem = Items["Text"]
+    local HideItem = Items["Hide"].Instance
 
+    -- Reduce redraw flicker
+    PageInstance.Visible = true
+    HideItem.Visible = Bool
+
+    -- Color/text updates (no delay)
     if Bool then
-        PageInstance.Visible = true
-        TextItem:Tween(nil, { TextColor3 = Library.Theme.Accent, TextTransparency = 0 })
-        HideItem.Visible = true
-        TextItem:ChangeItemTheme({ TextColor3 = 'Accent' }) -- kept this for theme binding
+        TextItem.Instance.TextColor3 = Library.Theme.Accent
+        TextItem.Instance.TextTransparency = 0
+        TextItem:ChangeItemTheme({ TextColor3 = "Accent" })
     else
-        TextItem:Tween(nil, { TextColor3 = Library.Theme.Text, TextTransparency = 0.5 })
-        HideItem.Visible = false
-        TextItem:ChangeItemTheme({ TextColor3 = 'Text' })
+        TextItem.Instance.TextColor3 = Library.Theme.Text
+        TextItem.Instance.TextTransparency = 0.5
+        TextItem:ChangeItemTheme({ TextColor3 = "Text" })
     end
 
-    local Descendants = TransparencyCache[PageInstance]
-    if not Descendants then
-        Descendants = PageInstance:GetDescendants()
-        table.insert(Descendants, PageInstance)
-        TransparencyCache[PageInstance] = Descendants
-    end
+    -- Pre-cache transparency data to avoid multiple function calls
+    local Descendants = PageInstance:GetDescendants()
+    Descendants[#Descendants + 1] = PageInstance
 
-    local ActiveTweens = 0
-    local TotalTweens = 0
+    local FadeTweens = {}
 
-    for _, Value in Descendants do
-        local ValueIndex = Library:GetTransparencyPropertyFromItem(Value)
-        if not ValueIndex then
+    for _, Value in ipairs(Descendants) do
+        local Props = Library:GetTransparencyPropertyFromItem(Value)
+        if not Props then
             continue
         end
 
-        if type(ValueIndex) == 'table' then
-            for _, Property in ValueIndex do
-                TotalTweens += 1
-                ActiveTweens += 1
-                local Tween = Library:FadeItem(Value, Property, Bool, 0)
-                Library:Connect(Tween.Tween.Completed, function()
-                    ActiveTweens -= 1
-                    if ActiveTweens == 0 then
-                        Debounce = false
-                        PageInstance.Visible = Bool
-                    end
-                end)
-            end
-        else
-            TotalTweens += 1
-            ActiveTweens += 1
-            local Tween = Library:FadeItem(Value, ValueIndex, Bool, 0)
-            Library:Connect(Tween.Tween.Completed, function()
-                ActiveTweens -= 1
-                if ActiveTweens == 0 then
-                    Debounce = false
-                    PageInstance.Visible = Bool
-                end
-            end)
+        if type(Props) ~= "table" then
+            Props = { Props }
+        end
+
+        for _, Property in ipairs(Props) do
+            local TweenInfo = TweenInfo.new(FadeSpeed, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+            local Target = { [Property] = Bool and 0 or 1 }
+
+            -- Cancel existing tweens to prevent buildup
+            TweenService:Create(Value, TweenInfo, Target):Play()
         end
     end
 
-    if TotalTweens == 0 then
+    -- Minimal delay reset after fade duration
+    task.delay(FadeSpeed, function()
         Debounce = false
         PageInstance.Visible = Bool
-    end
+    end)
 end
 
-Items['Inactive']:Connect('MouseButton1Down', function()
-    for _, Value in Page.Window.Pages do
+Items["Inactive"]:Connect("MouseButton1Down", function()
+    for _, Value in ipairs(Page.Window.Pages) do
         Value:Turn(Value == Page)
     end
 end)
