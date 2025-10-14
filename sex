@@ -200,7 +200,7 @@ do
             ['Page Background'] = FromRGB(30, 30, 35),
             ['Border'] = FromRGB(10, 10, 10),
             ['Outline'] = FromRGB(27, 27, 32),
-            ['Accent'] = FromRGB(61, 66, 107),
+            ['Accent'] = FromRGB(0, 0, 255),
             ['Element'] = FromRGB(33, 33, 36),
             ['Hovered Element'] = FromRGB(40, 40, 43),
             ['Text'] = FromRGB(215, 215, 215),
@@ -2830,66 +2830,60 @@ do
             }):AddToTheme({ Color = 'Outline' })
         end
 
-        local Debounce = false
+local Debounce = false
 
-        function Window:SetOpen(Bool)
-            if Debounce then
-                return
-            end
+function Window:SetOpen(Bool)
+	if Debounce then
+		return
+	end
 
-            Window.IsOpen = Bool
+	Debounce = true
+	Window.IsOpen = Bool
 
-            Debounce = true
+	local MainFrame = Items['MainFrame'].Instance
+	local FadeSpeed = Window.FadeSpeed or 0.35
 
-            if Bool then
-                Items['MainFrame'].Instance.Visible = true
-            end
+	-- Show immediately when opening
+	if Bool then
+		MainFrame.Visible = true
+	end
 
-            local Descendants = Items['MainFrame'].Instance:GetDescendants()
-            TableInsert(Descendants, Items['MainFrame'].Instance)
+	task.spawn(function()
+		local Descendants = MainFrame:GetDescendants()
+		TableInsert(Descendants, MainFrame)
 
-            local NewTween
-            for Index, Value in Descendants do
-                local ValueIndex =
-                    Library:GetTransparencyPropertyFromItem(Value)
+		for _, Value in Descendants do
+			local ValueIndex = Library:GetTransparencyPropertyFromItem(Value)
+			if not ValueIndex then
+				continue
+			end
 
-                if not ValueIndex then
-                    continue
-                end
+			if type(ValueIndex) == 'table' then
+				for _, Property in ValueIndex do
+					Library:FadeItem(Value, Property, Bool, FadeSpeed)
+				end
+			else
+				Library:FadeItem(Value, ValueIndex, Bool, FadeSpeed)
+			end
+		end
 
-                if type(ValueIndex) == 'table' then
-                    for _, Property in ValueIndex do
-                        NewTween = Library:FadeItem(
-                            Value,
-                            Property,
-                            Bool,
-                            Window.FadeSpeed
-                        )
-                    end
-                else
-                    NewTween = Library:FadeItem(
-                        Value,
-                        ValueIndex,
-                        Bool,
-                        Window.FadeSpeed
-                    )
-                end
-            end
+		-- Small delay ensures all fades complete
+		task.wait(FadeSpeed)
 
-            Library:Connect(NewTween.Tween.Completed, function()
-                Debounce = false
-                Items['MainFrame'].Instance.Visible = Bool
-            end)
-        end
+		-- Hide only after fade-out completes
+		MainFrame.Visible = Bool
+		Debounce = false
+	end)
+end
 
-        Library:Connect(UserInputService.InputBegan, function(Input)
-            if
-                tostring(Input.KeyCode) == Library.MenuKeybind
-                or tostring(Input.UserInputType) == Library.MenuKeybind
-            then
-                Window:SetOpen(not Window.IsOpen)
-            end
-        end)
+Library:Connect(UserInputService.InputBegan, function(Input)
+	if
+		tostring(Input.KeyCode) == Library.MenuKeybind
+		or tostring(Input.UserInputType) == Library.MenuKeybind
+	then
+		Window:SetOpen(not Window.IsOpen)
+	end
+end)
 
         Window.Elements = Items
 
@@ -5747,6 +5741,6 @@ end
         return Listbox
     end
 end
--- a
+--
 getgenv().Library = Library
 return Library
