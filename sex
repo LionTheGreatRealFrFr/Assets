@@ -152,6 +152,7 @@ do
     local TweenService = game:GetService('TweenService')
     local CoreGui = cloneref and cloneref(game:GetService('CoreGui'))
         or game:GetService('CoreGui')
+    local RunService = game:GetService('RunService')
 
     gethui = gethui or function()
         return CoreGui
