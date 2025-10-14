@@ -3107,6 +3107,7 @@ local RunService = game:GetService("RunService")
 
 local Debounce = false
 local TransparencyCache = {}
+local ActiveTweens = {}
 
 function Page:CacheTransparencyData()
     if TransparencyCache[self] then
@@ -3130,6 +3131,21 @@ function Page:CacheTransparencyData()
     return Cached
 end
 
+local function StopActiveTweensForPage(page)
+    local list = ActiveTweens[page]
+    if not list then return end
+
+    for _, tween in ipairs(list) do
+        pcall(function()
+            if tween.Tween and tween.Tween.PlaybackState == Enum.PlaybackState.Playing then
+                tween.Tween:Cancel()
+            end
+        end)
+    end
+
+    ActiveTweens[page] = nil
+end
+
 function Page:Turn(Bool)
     if Debounce then
         return
@@ -3144,32 +3160,35 @@ function Page:Turn(Bool)
     local HideItem = Items["Hide"].Instance
     local Theme = Library.Theme
 
+    -- Cancel any active tweens from previous runs
+    StopActiveTweensForPage(self)
+
     if Bool then
         ItemsPage.Visible = true
         HideItem.Visible = true
-
         TextItem:Tween(nil, { TextColor3 = Theme.Accent, TextTransparency = 0 })
         TextItem:ChangeItemTheme({ TextColor3 = "Accent" })
     else
         HideItem.Visible = false
-
         TextItem:Tween(nil, { TextColor3 = Theme.Text, TextTransparency = 0.5 })
         TextItem:ChangeItemTheme({ TextColor3 = "Text" })
-    end
 
-    local Cached = self:CacheTransparencyData()
-    local Index = 1
-    local BatchSize = 25
-    local FadeSpeed = Page.Window.FadeSpeed or 0.5
-
-    -- Instantly hide pages that are being turned off (so they don't linger)
-    if not Bool then
+        -- Cancel all tweens and hide immediately
+        StopActiveTweensForPage(self)
         ItemsPage.Visible = false
         Debounce = false
         return
     end
 
-    -- Fade in pages that are being turned on (smooth but fast)
+    -- Wait one frame for visibility to apply
+    RunService.Stepped:Wait()
+
+    -- Fade in only the active page
+    local Cached = self:CacheTransparencyData()
+    local Index = 1
+    local BatchSize = 25
+    ActiveTweens[self] = {}
+
     task.spawn(function()
         while Index <= #Cached do
             local EndIndex = math.min(Index + BatchSize - 1, #Cached)
@@ -3177,10 +3196,12 @@ function Page:Turn(Bool)
                 local Obj, Props = Cached[i][1], Cached[i][2]
                 if type(Props) == "table" then
                     for _, Prop in ipairs(Props) do
-                        Library:FadeItem(Obj, Prop, Bool, FadeSpeed)
+                        local t = Library:FadeItem(Obj, Prop, true, FadeSpeed)
+                        if t then table.insert(ActiveTweens[self], t) end
                     end
                 else
-                    Library:FadeItem(Obj, Props, Bool, FadeSpeed)
+                    local t = Library:FadeItem(Obj, Props, true, FadeSpeed)
+                    if t then table.insert(ActiveTweens[self], t) end
                 end
             end
             Index = EndIndex + 1
