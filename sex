@@ -3402,86 +3402,70 @@ end
             end
         end
 
-        local Debounce = false
+local Debounce = false
 
-        function SubPage:Turn(Bool)
-            if Debounce then
-                return
-            end
+function SubPage:Turn(Bool)
+	if Debounce then
+		return
+	end
 
-            SubPage.Active = Bool
+	Debounce = true
+	SubPage.Active = Bool
 
-            Debounce = true
+	local Subtab = Items['Subtab'].Instance
+	local Icon = Items['Icon']
+	local Hide = Items['Hide'].Instance
+	local Inactive = Items['Inactive'].Instance
 
-            if Bool then
-                Items['Subtab'].Instance.Visible = true
+	if Bool then
+		Subtab.Visible = true
+		Icon.Instance.ImageColor3 = Library.Theme.Accent
+		Icon.Instance.ImageTransparency = 0
+		Hide.Visible = true
+		Icon:ChangeItemTheme({ ImageColor3 = 'Accent' })
+		Inactive.Size = UDim2New(1, 0, 1, 1)
+	else
+		Icon.Instance.ImageColor3 = Library.Theme.Text
+		Icon.Instance.ImageTransparency = 0.35
+		Hide.Visible = false
+		Icon:ChangeItemTheme({ ImageColor3 = 'Text' })
+		Inactive.Size = UDim2New(1, 0, 1, -2)
+	end
 
-                Items['Icon']:Tween(nil, {
-                    ImageColor3 = Library.Theme.Accent,
-                    ImageTransparency = 0,
-                })
-                Items['Hide'].Instance.Visible = true
+	-- Instantly apply transparency changes instead of tweening
+	local Descendants = Subtab:GetDescendants()
+	TableInsert(Descendants, Subtab)
 
-                Items['Icon']:ChangeItemTheme({ ImageColor3 = 'Accent' })
+	for _, Value in Descendants do
+		local ValueIndex = Library:GetTransparencyPropertyFromItem(Value)
+		if not ValueIndex then
+			continue
+		end
 
-                Items['Inactive'].Instance.Size = UDim2New(1, 0, 1, 1)
-            else
-                Items['Icon']:Tween(nil, {
-                    ImageColor3 = Library.Theme.Text,
-                    ImageTransparency = 0.35,
-                })
-                Items['Hide'].Instance.Visible = false
+		if type(ValueIndex) == 'table' then
+			for _, Property in ValueIndex do
+				Library:FadeItem(Value, Property, Bool, 0) -- instantly apply
+			end
+		else
+			Library:FadeItem(Value, ValueIndex, Bool, 0)
+		end
+	end
 
-                Items['Icon']:ChangeItemTheme({ ImageColor3 = 'Text' })
-                Items['Inactive'].Instance.Size = UDim2New(1, 0, 1, -2)
-            end
+	-- No fade time, so toggle immediately
+	Subtab.Visible = Bool
+	Debounce = false
+end
 
-            local Descendants = Items['Subtab'].Instance:GetDescendants()
-            TableInsert(Descendants, Items['Subtab'].Instance)
+Items['Inactive']:Connect('MouseButton1Down', function()
+	for _, Value in SubPage.Window.SubPages do
+		Value:Turn(Value == SubPage)
+	end
+end)
 
-            local NewTween
-            for Index, Value in Descendants do
-                local ValueIndex =
-                    Library:GetTransparencyPropertyFromItem(Value)
+if #SubPage.Window.SubPages == 0 then
+	SubPage:Turn(true)
+end
 
-                if not ValueIndex then
-                    continue
-                end
-
-                if type(ValueIndex) == 'table' then
-                    for _, Property in ValueIndex do
-                        NewTween = Library:FadeItem(
-                            Value,
-                            Property,
-                            Bool,
-                            SubPage.Window.FadeSpeed or 0.5
-                        )
-                    end
-                else
-                    NewTween = Library:FadeItem(
-                        Value,
-                        ValueIndex,
-                        Bool,
-                        SubPage.Window.FadeSpeed or 0.5
-                    )
-                end
-            end
-
-            Library:Connect(NewTween.Tween.Completed, function()
-                Debounce = false
-                Items['Subtab'].Instance.Visible = Bool
-            end)
-        end
-
-        Items['Inactive']:Connect('MouseButton1Down', function()
-            for Index, Value in SubPage.Window.SubPages do
-                Value:Turn(Value == SubPage)
-            end
-        end)
-
-        if #SubPage.Window.SubPages == 0 then
-            SubPage:Turn(true)
-        end
 
         SubPage.Elements = Items
 
@@ -5763,6 +5747,6 @@ end
         return Listbox
     end
 end
---
+-- a
 getgenv().Library = Library
 return Library
