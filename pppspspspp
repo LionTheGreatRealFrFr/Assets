@@ -8,7 +8,100 @@
     Original: compkiller.net
 --]]
 
---- Export Types ---
+getgenv = getgenv or getfenv;
+
+--- Local Variables ---
+local cloneref: cloneref = cloneref or function(f) return f end;
+local TweenService: TweenService = cloneref(game:GetService('TweenService'));
+local UserInputService: UserInputService = cloneref(game:GetService('UserInputService'));
+local TextService: TextService = cloneref(game:GetService('TextService'));
+local RunService: RunService = cloneref(game:GetService('RunService'));
+local Players: Players = cloneref(game:GetService('Players'));
+local HttpService: HttpService = cloneref(game:GetService('HttpService'));
+local LocalPlayer: Player = Players.LocalPlayer;
+local CoreGui: PlayerGui = (gethui and gethui()) or cloneref(game:FindFirstChild('CoreGui')) or cloneref(LocalPlayer.PlayerGui);
+local Mouse: Mouse = LocalPlayer:GetMouse();
+local CurrentCamera: Camera? = cloneref(workspace.CurrentCamera);
+
+local function startThrottledDrag(shouldContinueFunc, updateFunc, hz)
+    hz = hz or 60
+    local acc = 0
+    local running = true
+    local conn
+    conn = RunService.Heartbeat:Connect(function(dt)
+        if not running then
+            conn:Disconnect()
+            return
+        end
+        acc = acc + dt
+        local tickPeriod = 1 / hz
+        if acc < tickPeriod then return end
+        acc = 0
+        local ok, res = pcall(shouldContinueFunc)
+        if not ok or not res then
+            running = false
+            if conn and conn.Connected then conn:Disconnect() end
+            return
+        end
+        pcall(updateFunc)
+    end)
+    return function()
+        running = false
+        if conn and conn.Connected then conn:Disconnect() end
+    end
+end
+
+local function makePool(createFunc, initial)
+    initial = initial or 4
+    local pool = {}
+    for i=1, initial do pool[#pool+1] = createFunc() end
+    local inUse = setmetatable({}, {__mode = "k"})
+    local function acquire()
+        local obj = table.remove(pool)
+        if not obj then obj = createFunc() end
+        inUse[obj] = true
+        return obj
+    end
+    local function release(obj)
+        if not obj then return end
+        inUse[obj] = nil
+        -- user should reset visible state before reuse
+        pool[#pool+1] = obj
+    end
+    return { acquire = acquire, release = release, pool = pool, inUse = inUse }
+end
+
+local function ConnManager()
+    local t = {}
+    local function add(conn)
+        if conn and typeof(conn) == "RBXScriptConnection" then
+            t[#t+1] = conn
+        end
+        return conn
+    end
+    local function disconnectAll()
+        for _, c in ipairs(t) do
+            pcall(function() if c and c.Connected then c:Disconnect() end end)
+        end
+        t = {}
+    end
+    return {
+        add = add,
+        disconnectAll = disconnectAll
+    }
+end
+
+local _ACTIVE_TWEENS = setmetatable({}, {__mode = "k"})
+local function PlayTween(instance, info, props)
+    local prior = _ACTIVE_TWEENS[instance]
+    if prior then
+        pcall(function() if prior.PlaybackState and prior.PlaybackState == Enum.PlaybackState.Playing then prior:Pause() end end)
+    end
+    local tween = TweenService:Create(instance, info or TweenInfo.new(0.2), props)
+    _ACTIVE_TWEENS[instance] = tween
+    tween:Play()
+    return tween
+end
 
 export type cloneref = (target: Instance) -> Instance;
 
@@ -194,142 +287,6 @@ pcall(function()
 	getfenv()[Constant] = getfenv()[Constant] or function(f) return f end; 
 	-- LPH_NO_VIRTUALIZE
 end);
-
-getgenv = getgenv or getfenv;
-
--- Please ignore the ugly code. [Custom File System] --
-if game:GetService('RunService'):IsStudio() then
-	local BaseWorkspace = Instance.new('Folder',game:GetService("ReplicatedFirst"));
-
-	BaseWorkspace.Name = tostring(string.char(math.random(50,120)))..tostring(string.char(math.random(50,120)))..tostring(string.char(math.random(50,120)))..tostring(string.char(math.random(50,120)))..tostring(string.char(math.random(50,120)))..tostring(string.char(math.random(50,120)));
-
-	local __get_path_c = function(path)
-		return (string.find(path,'/',1,true) and string.split(path,'/')) or (string.find(path,'\\',1,true) and string.split(path,'\\')) or {path};
-	end;
-
-	local __get_path = function(path)
-		local main = __get_path_c(path);
-
-		local block = BaseWorkspace;
-
-		for i,v in next , main do
-			block = block[v];
-		end;
-
-		return block;
-	end;
-
-	getgenv().readfile = function(path)
-		local path : StringValue = __get_path(path);
-
-		return path.Value;
-	end;
-
-	getgenv().isfile = function(path)
-		local success , message = pcall(function()
-			return __get_path(path);
-		end);
-
-		if success and not message:IsA("Folder") then
-			return true;
-		end;
-
-		return false;
-	end;
-
-	getgenv().isfolder = function(path)
-		local success , message = pcall(function()
-			return __get_path(path);
-		end);
-
-		if success and message:IsA("Folder") then
-			return true;
-		end;
-
-		return false;
-	end;
-
-	getgenv().writefile = function(path,content)
-		local main = __get_path_c(path);
-
-		local block = BaseWorkspace;
-
-		for i,v in next , main do
-			local item = block:FindFirstChild(v);
-			if not item then
-				local c = Instance.new('StringValue',block);
-
-				c.Name = tostring(v);
-				c.Value = content;
-			else
-				if item:IsA('StringValue') and tostring(item) == v then
-					item.Name = tostring(v);
-					item.Value = content;
-				end;
-
-				block = item;
-			end;
-		end;
-	end;
-
-	getgenv().listfiles = function(path)
-		local fold = __get_path(path);
-		local pa = {};
-
-		for i,v in next , fold:GetChildren() do
-			if v:IsA('StringValue') then
-				table.insert(pa,path..'/'..tostring(v));
-			end;
-		end;
-
-		return pa;
-	end;
-
-	getgenv().makefolder = function(path)
-		local main = __get_path_c(path);
-
-		local block = BaseWorkspace;
-
-		for i,v in next , main do
-			local item = block:FindFirstChild(v);
-			if not item then
-				local c = Instance.new('Folder',block);
-
-				c.Name = tostring(v);
-			else
-				block = item;
-			end;
-		end;
-	end;
-
-	getgenv().delfile = function(path)
-		local main = __get_path_c(path);
-
-		local block = BaseWorkspace;
-
-		for i,v in next , main do
-			local item = block:FindFirstChild(v);
-			if item and item:IsA('StringValue') then
-				item:Destroy();
-			else
-				block = item;
-			end;
-		end;
-	end;
-end;
-
---- Local Variables ---
-local cloneref: cloneref = cloneref or function(f) return f end;
-local TweenService: TweenService = cloneref(game:GetService('TweenService'));
-local UserInputService: UserInputService = cloneref(game:GetService('UserInputService'));
-local TextService: TextService = cloneref(game:GetService('TextService'));
-local RunService: RunService = cloneref(game:GetService('RunService'));
-local Players: Players = cloneref(game:GetService('Players'));
-local HttpService: HttpService = cloneref(game:GetService('HttpService'));
-local LocalPlayer: Player = Players.LocalPlayer;
-local CoreGui: PlayerGui = (gethui and gethui()) or cloneref(game:FindFirstChild('CoreGui')) or cloneref(LocalPlayer.PlayerGui);
-local Mouse: Mouse = LocalPlayer:GetMouse();
-local CurrentCamera: Camera? = cloneref(workspace.CurrentCamera);
 
 local Compkiller = {
 	Version = '2.3',
@@ -2905,16 +2862,18 @@ function Compkiller:_AddColorPickerPanel(Button: ImageButton , Callback: (Color:
 		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 			Args.IsHold = true;
 
-			while (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold) do task.wait()
-				local ColorY = ColorRedGreenBlue.AbsolutePosition.Y
-				local ColorYM = ColorY + ColorRedGreenBlue.AbsoluteSize.Y;
-				local Value = math.clamp(Mouse.Y, ColorY, ColorYM)
-				local Code = ((Value - ColorY) / (ColorYM - ColorY));
-
-				H = Code;
-
-				Args:Update();
-			end;
+			local __dragCancel = startThrottledDrag(function()
+    return (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold)
+end, function()
+task.wait()
+local ColorY = ColorRedGreenBlue.AbsolutePosition.Y
+local ColorYM = ColorY + ColorRedGreenBlue.AbsoluteSize.Y;
+local Value = math.clamp(Mouse.Y, ColorY, ColorYM)
+local Code = ((Value - ColorY) / (ColorYM - ColorY));
+H = Code;
+Args:Update();
+end, 60)
+;
 		end;
 	end);
 
@@ -2922,16 +2881,17 @@ function Compkiller:_AddColorPickerPanel(Button: ImageButton , Callback: (Color:
 		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 			Args.IsHold = true;
 
-			while (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold) do task.wait()
-				local transparency = math.clamp((((Mouse.X) - ColorOpc.AbsolutePosition.X) / ColorOpc.AbsoluteSize.X), 0, 1);
-				local RealColor = Color3.fromHSV(H , S , V);
-
-				TextLabel.Text = "#" .. tostring(RealColor:ToHex())
-
-				Transparency = transparency;
-
-				Args:Update();
-			end;
+			local __dragCancel = startThrottledDrag(function()
+    return (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold)
+end, function()
+task.wait()
+local transparency = math.clamp((((Mouse.X) - ColorOpc.AbsolutePosition.X) / ColorOpc.AbsoluteSize.X), 0, 1);
+local RealColor = Color3.fromHSV(H , S , V);
+TextLabel.Text = "#" .. tostring(RealColor:ToHex())
+Transparency = transparency;
+Args:Update();
+end, 60)
+;
 		end;
 	end);
 
@@ -2939,21 +2899,22 @@ function Compkiller:_AddColorPickerPanel(Button: ImageButton , Callback: (Color:
 		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 			Args.IsHold = true;
 
-			while (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold) do task.wait();
-				local PosX = ColorPickBox.AbsolutePosition.X
-				local ScaleX = PosX + ColorPickBox.AbsoluteSize.X
-				local Value, PosY = math.clamp(Mouse.X, PosX, ScaleX), ColorPickBox.AbsolutePosition.Y
-				local ScaleY = PosY + ColorPickBox.AbsoluteSize.Y
-				local Vals = math.clamp(Mouse.Y, PosY, ScaleY)
-				local RealColor = Color3.fromHSV(H , S , V);
+			local __dragCancel = startThrottledDrag(function()
+    return (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Args.IsHold)
+end, function()
+task.wait();
+local PosX = ColorPickBox.AbsolutePosition.X
+local ScaleX = PosX + ColorPickBox.AbsoluteSize.X
+local Value, PosY = math.clamp(Mouse.X, PosX, ScaleX), ColorPickBox.AbsolutePosition.Y
+local ScaleY = PosY + ColorPickBox.AbsoluteSize.Y
+local Vals = math.clamp(Mouse.Y, PosY, ScaleY)
+local RealColor = Color3.fromHSV(H , S , V);
+S = (Value - PosX) / (ScaleX - PosX);
+V = (1 - ((Vals - PosY) / (ScaleY - PosY)));
+TextLabel.Text = "#" .. tostring(RealColor:ToHex())
+Args:Update();
+end, 60)
 
-				S = (Value - PosX) / (ScaleX - PosX);
-				V = (1 - ((Vals - PosY) / (ScaleY - PosY)));
-
-				TextLabel.Text = "#" .. tostring(RealColor:ToHex())
-
-				Args:Update();
-			end
 		end
 	end)
 
