@@ -1,823 +1,647 @@
 local viewport_size = Camera.ViewportSize
 local raycast_params = RaycastParams.new()
+local _indicator_params = RaycastParams.new()
 
 do
-    raycast_params.FilterDescendantsInstances = {
-        Camera,
-        LocalPlayer.Character,
-    }
+    raycast_params.FilterDescendantsInstances = { Camera, LocalPlayer.Character }
     raycast_params.FilterType = Enum.RaycastFilterType.Exclude
     raycast_params.IgnoreWater = true
+
+    _indicator_params.FilterType = Enum.RaycastFilterType.Exclude
+    _indicator_params.IgnoreWater = true
+
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        raycast_params.FilterDescendantsInstances = { Camera, char }
+    end)
 end
+
 do
     function ESP_Stuff.fonts.cache:Register_Font(Name, Weight, Style, Asset)
-        if not isfolder('Elisium') then
-            makefolder('Elisium')
-        end
-
+        if not isfolder('Elisium') then makefolder('Elisium') end
         local asset = 'Elisium/' .. Asset.Id
         local font = 'Elisium/' .. Name .. '.font'
-
-        if not isfile(asset) then
-            writefile(asset, Asset.Font)
-        end
-
+        if not isfile(asset) then writefile(asset, Asset.Font) end
         writefile(font, HttpService:JSONEncode({
             name = Name,
-            faces = {
-                {
-                    name = 'Regular',
-                    weight = Weight,
-                    style = Style,
-                    assetId = getcustomasset(asset),
-                },
-            },
+            faces = {{ name = 'Regular', weight = Weight, style = Style, assetId = getcustomasset(asset) }},
         }))
-
         return getcustomasset(font)
     end
-
-    ESP_Stuff.fonts.options = ({
-        ProggyTiny = Font.fromEnum(Enum.Font.GothamBold),
-    })
+    ESP_Stuff.fonts.options = ({ ProggyTiny = Font.fromEnum(Enum.Font.GothamBold) })
 end
+
 do
     function ESP_Stuff.functions:create(class, prop)
         local inst = TypeOf(class) == 'string' and NewInstance(class) or class
-
-        for property, val in pairs(prop)do
+        for property, val in pairs(prop) do
             inst[property] = val
         end
-
         return inst
     end
-    function ESP_Stuff.functions:is_visible(Destination)
+
+    ESP_Stuff.functions.is_visible = LPH_NO_VIRTUALIZE(function(self, Destination)
         local part = Destination and Destination.PrimaryPart
-
-        if not part then
-            return false
-        end
-
-        local raycast_params = RaycastParams.new()
-        local RaycastResult = Workspace:Raycast(Camera.CFrame.p, (part.Position - Camera.CFrame.p).Unit * 10000, raycast_params)
-
+        if not part then return false end
+        local origin = Camera.CFrame.p
+        local RaycastResult = Workspace:Raycast(origin, (part.Position - origin).Unit * 10000, _indicator_params)
         return RaycastResult and RaycastResult.Instance:IsDescendantOf(Destination)
-    end
+    end)
 
     local increase = NewVector3(0, 0, 0)
-
-    if game_name == 'Universal' then
-        increase = NewVector3(0, 0, 0)
-    else
-        increase = NewVector3(0, 0, 0)
-    end
-
     local vertices = {
-        {
-            -0.5,
-            -0.5,
-            -0.5,
-        },
-        {
-            -0.5,
-            0.5,
-            -0.5,
-        },
-        {
-            0.5,
-            -0.5,
-            -0.5,
-        },
-        {
-            0.5,
-            0.5,
-            -0.5,
-        },
-        {
-            -0.5,
-            -0.5,
-            0.5,
-        },
-        {
-            -0.5,
-            0.5,
-            0.5,
-        },
-        {
-            0.5,
-            -0.5,
-            0.5,
-        },
-        {0.5, 0.5, 0.5},
+        {-0.5, -0.5, -0.5}, {-0.5,  0.5, -0.5},
+        { 0.5, -0.5, -0.5}, { 0.5,  0.5, -0.5},
+        {-0.5, -0.5,  0.5}, {-0.5,  0.5,  0.5},
+        { 0.5, -0.5,  0.5}, { 0.5,  0.5,  0.5},
     }
 
-    function ESP_Stuff.functions:custom_bounds(model)
-        local min_bound, max_bound = NewVector3(MathHuge, MathHuge, MathHuge), NewVector3(-MathHuge, -MathHuge, -MathHuge)
+    ESP_Stuff.functions.custom_bounds = LPH_NO_VIRTUALIZE(function(self, model)
+        local min_x, min_y, min_z = MathHuge, MathHuge, MathHuge
+        local max_x, max_y, max_z = -MathHuge, -MathHuge, -MathHuge
         local min_width = 2.5
 
-        for _, part in model:GetChildren()do
+        for _, part in model:GetChildren() do
             if part:IsA('BasePart') then
                 local cframe, size = part.CFrame, part.Size
+                local sx, sy, sz = size.X, (size.Y + 0.2), size.Z
 
                 for _, v in vertices do
-                    local world_space = cframe:PointToWorldSpace(NewVector3(v[1] * size.X, (v[2] + 0.2) * (size.Y + 0.2), v[3] * size.Z))
+                    local w = cframe:PointToWorldSpace(NewVector3(v[1] * sx, (v[2] + 0.2) * sy, v[3] * sz))
+                    local wx, wy, wz = w.X, w.Y, w.Z
 
-                    min_bound = NewVector3(MathMin(min_bound.X, world_space.X), MathMin(min_bound.Y, world_space.Y), MathMin(min_bound.Z, world_space.Z))
-                    max_bound = NewVector3(MathMax(max_bound.X, world_space.X), MathMax(max_bound.Y, world_space.Y), MathMax(max_bound.Z, world_space.Z))
+                    if wx < min_x then min_x = wx end
+                    if wy < min_y then min_y = wy end
+                    if wz < min_z then min_z = wz end
+                    if wx > max_x then max_x = wx end
+                    if wy > max_y then max_y = wy end
+                    if wz > max_z then max_z = wz end
                 end
             end
         end
 
-        if min_bound == NewVector3(MathHuge, MathHuge, MathHuge) then
-            return
+        if min_x == MathHuge then return end
+
+        local size_x = MathMax(max_x - min_x, min_width)
+        local size_y = max_y - min_y
+        local size_z = max_z - min_z
+        local cx = (min_x + max_x) / 2
+        local cy = (min_y + max_y) / 2
+        local cz = (min_z + max_z) / 2
+        local center = NewVector3(cx, cy, cz)
+
+        return NewCFrame(center), NewVector3(size_x, size_y, size_z) + increase, center
+    end)
+
+    ESP_Stuff.functions.get_tool_name = LPH_NO_VIRTUALIZE(function(self, character)
+        for _, v in character:GetChildren() do
+            if not v:IsA('Model') then continue end
+            if v.Name == 'Hair' or v.Name == 'HolsterModel' then continue end
+            if not v.PrimaryPart then continue end
+            if v:FindFirstChild('Detail') or v:FindFirstChild('Main') or v:FindFirstChild('Handle')
+            or v:FindFirstChild('Attachments') or v:FindFirstChild('ArrowAttach') or v:FindFirstChild('Attach') then
+                return v.Name
+            end
         end
-
-        local size = max_bound - min_bound
-
-        size = NewVector3(MathMax(size.X, min_width), size.Y, size.Z)
-
-        local center = (min_bound + max_bound) / 2
-
-        return NewCFrame(center), size + increase, center
-    end
+        return 'none'
+    end)
 end
 
-ESP_Stuff.functions.get_tool_name = LPH_NO_VIRTUALIZE(function(self, character)
-    for _, v in character:GetChildren()do
-        if not v:IsA('Model') then
-            continue
-        end
-        if v.Name == 'Hair' or v.Name == 'HolsterModel' then
-            continue
-        end
-        if not v.PrimaryPart then
-            continue
-        end
-        if v:FindFirstChild('Detail') or v:FindFirstChild('Main') or v:FindFirstChild('Handle') or v:FindFirstChild('Attachments') or v:FindFirstChild('ArrowAttach') or v:FindFirstChild('Attach') then
-            return v.Name
-        end
-    end
+-- reusable corner positions table, avoids allocation every frame
+local _corner_positions = {
+    {'LeftTopFix',        0, 0, 1,  12},
+    {'RightTopFix',       0, 0, 1,  12},
+    {'BottomSideFix',     0, 0},
+    {'BottomRightSideFix',0, 0},
+    {'LeftTop',           0, 0, 0, 1, NewVector2(0, 0)},
+    {'LeftSide',          0, 0, 1, 0, NewVector2(0, 0)},
+    {'RightTop',          0, 0, 0, 1, NewVector2(1, 0)},
+    {'RightSide',         0, 0, 1, 0, NewVector2(0, 0)},
+    {'BottomSide',        0, 0, 1, 0, NewVector2(0, 3)},
+    {'BottomDown',        0, 0, 0, 1, NewVector2(0, 1)},
+    {'BottomRightSide',   0, 0, 1, 0, NewVector2(1, 1)},
+    {'BottomRightDown',   0, 0, 0, 1, NewVector2(1, 1)},
+}
 
-    return 'none'
-end)
-
-do
-    function ESP_Stuff.fonts.cache:Register_Font(Name, Weight, Style, Asset)
-        if not isfolder('Script') then
-            makefolder('Script')
-        end
-
-        local asset = 'Elisium/' .. Asset.Id
-        local font = 'Elisium/' .. Name .. '.font'
-
-        if not isfile(asset) then
-            writefile(asset, Asset.Font)
-        end
-
-        writefile(font, HttpService:JSONEncode({
-            name = Name,
-            faces = {
-                {
-                    name = 'Regular',
-                    weight = Weight,
-                    style = Style,
-                    assetId = getcustomasset(asset),
-                },
-            },
-        }))
-
-        return getcustomasset(font)
-    end
-end
+local _CORNER_HIDE = {
+    'LeftTopFix','RightTopFix','BottomSideFix','BottomRightSideFix',
+    'LeftTop','LeftSide','BottomSide','BottomDown',
+    'RightTop','RightSide','BottomRightSide','BottomRightDown',
+}
 
 local ESP = LPH_NO_VIRTUALIZE(function(model)
     local esp_connection
     local esp_holder = ESP_Stuff.functions:create('ScreenGui', {
-        Parent = gethui(),
-        Name = 'esp_holder',
+        Parent = gethui(), Name = 'esp_holder',
     })
     local arrows_holder = ESP_Stuff.functions:create('ScreenGui', {
-        Parent = gethui(),
-        Name = 'arrows_holder',
-        IgnoreGuiInset = true,
+        Parent = gethui(), Name = 'arrows_holder', IgnoreGuiInset = true,
     })
-    local drawings = ({
+    local drawings = {
         name = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            TextStrokeColor3 = C3_BLACK,
-            FontFace = ESP_Stuff.fonts.options.ProggyTiny,
-            TextSize = 9,
-            Text = model.Name,
+            Parent = esp_holder, BackgroundTransparency = 1,
+            TextStrokeTransparency = 0, TextStrokeColor3 = C3_BLACK,
+            FontFace = ESP_Stuff.fonts.options.ProggyTiny, TextSize = 9, Text = model.Name,
         }),
         distance = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            TextStrokeColor3 = C3_BLACK,
-            FontFace = ESP_Stuff.fonts.options.ProggyTiny,
-            TextSize = 9,
+            Parent = esp_holder, BackgroundTransparency = 1,
+            TextStrokeTransparency = 0, TextStrokeColor3 = C3_BLACK,
+            FontFace = ESP_Stuff.fonts.options.ProggyTiny, TextSize = 9,
         }),
         weapon = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            TextStrokeColor3 = C3_BLACK,
-            FontFace = ESP_Stuff.fonts.options.ProggyTiny,
-            TextSize = 9,
+            Parent = esp_holder, BackgroundTransparency = 1,
+            TextStrokeTransparency = 0, TextStrokeColor3 = C3_BLACK,
+            FontFace = ESP_Stuff.fonts.options.ProggyTiny, TextSize = 9,
         }),
         HealthText = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            TextXAlignment = Enum.TextXAlignment.Center,
-            FontFace = ESP_Stuff.fonts.options.ProggyTiny,
-            TextSize = 9,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            ZIndex = 999,
-            TextStrokeColor3 = C3_BLACK,
+            Parent = esp_holder, TextXAlignment = Enum.TextXAlignment.Center,
+            FontFace = ESP_Stuff.fonts.options.ProggyTiny, TextSize = 9,
+            BackgroundTransparency = 1, TextStrokeTransparency = 0,
+            ZIndex = 999, TextStrokeColor3 = C3_BLACK,
         }),
         Flag1 = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            Text = '',
-            TextColor3 = NewColor3(0, 0.85, 0),
-            FontFace = ESP_Stuff.fonts.options.JuraLight,
-            TextSize = 9,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            ZIndex = 999,
-            TextStrokeColor3 = C3_BLACK,
+            Parent = esp_holder, Text = '', TextColor3 = NewColor3(0, 0.85, 0),
+            FontFace = ESP_Stuff.fonts.options.JuraLight, TextSize = 9,
+            BackgroundTransparency = 1, TextStrokeTransparency = 0,
+            ZIndex = 999, TextStrokeColor3 = C3_BLACK,
             TextXAlignment = Enum.TextXAlignment.Right,
         }),
         Flag2 = ESP_Stuff.functions:create('TextLabel', {
-            Parent = esp_holder,
-            Text = '',
-            FontFace = ESP_Stuff.fonts.options.JuraLight,
-            TextSize = 9,
-            BackgroundTransparency = 1,
-            TextStrokeTransparency = 0,
-            ZIndex = 999,
-            TextStrokeColor3 = C3_BLACK,
+            Parent = esp_holder, Text = '',
+            FontFace = ESP_Stuff.fonts.options.JuraLight, TextSize = 9,
+            BackgroundTransparency = 1, TextStrokeTransparency = 0,
+            ZIndex = 999, TextStrokeColor3 = C3_BLACK,
             TextXAlignment = Enum.TextXAlignment.Right,
         }),
         BehindHealthbar = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            ZIndex = -1,
-            BackgroundColor3 = C3_BLACK,
-            BackgroundTransparency = 0,
-            BorderSizePixel = 1,
-            BorderColor3 = C3_BLACK,
+            Parent = esp_holder, ZIndex = -1, BackgroundColor3 = C3_BLACK,
+            BackgroundTransparency = 0, BorderSizePixel = 1, BorderColor3 = C3_BLACK,
         }),
         Healthbar = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            BackgroundColor3 = C3_WHITE,
-            BackgroundTransparency = 0,
-            BorderSizePixel = 0,
+            Parent = esp_holder, BackgroundColor3 = C3_WHITE,
+            BackgroundTransparency = 0, BorderSizePixel = 0,
         }),
-        HealthbarGradient = ESP_Stuff.functions:create('UIGradient', {
-            Enabled = true,
-            Rotation = -90,
-        }),
+        HealthbarGradient = ESP_Stuff.functions:create('UIGradient', { Enabled = true, Rotation = -90 }),
         BehindArmorBar = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            ZIndex = -1,
-            BackgroundColor3 = C3_BLACK,
-            BackgroundTransparency = 0,
-            BorderSizePixel = 1,
-            BorderColor3 = C3_BLACK,
+            Parent = esp_holder, ZIndex = -1, BackgroundColor3 = C3_BLACK,
+            BackgroundTransparency = 0, BorderSizePixel = 1, BorderColor3 = C3_BLACK,
         }),
         ArmorBar = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            BackgroundColor3 = C3_WHITE,
-            BackgroundTransparency = 0,
-            BorderSizePixel = 0,
+            Parent = esp_holder, BackgroundColor3 = C3_WHITE,
+            BackgroundTransparency = 0, BorderSizePixel = 0,
         }),
         Box = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            BackgroundTransparency = 1,
-            BackgroundColor3 = C3_WHITE,
-            ZIndex = -999,
+            Parent = esp_holder, BackgroundTransparency = 1,
+            BackgroundColor3 = C3_WHITE, ZIndex = -999,
         }),
         Box2 = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            BackgroundTransparency = 1,
-            BackgroundColor3 = C3_WHITE,
-            ZIndex = 999,
+            Parent = esp_holder, BackgroundTransparency = 1,
+            BackgroundColor3 = C3_WHITE, ZIndex = 999,
         }),
         BoxFill = ESP_Stuff.functions:create('Frame', {
             Parent = esp_holder,
             BackgroundTransparency = Script.Visuals.ESP.BoxFill_Transparency,
-            BackgroundColor3 = Script.Visuals.ESP.BoxFill_Color,
-            ZIndex = -998,
+            BackgroundColor3 = Script.Visuals.ESP.BoxFill_Color, ZIndex = -998,
         }),
         BoxFillGradient = ESP_Stuff.functions:create('UIGradient', {
-            Enabled = Script.Visuals.ESP.BoxFill_Gradient,
-            Rotation = 0,
+            Enabled = Script.Visuals.ESP.BoxFill_Gradient, Rotation = 0,
         }),
         Outline = ESP_Stuff.functions:create('UIStroke', {
-            Color = C3_BLACK,
-            Thickness = 3,
-            Transparency = 0,
-            LineJoinMode = Enum.LineJoinMode.Miter,
-            Enabled = true,
+            Color = C3_BLACK, Thickness = 3, Transparency = 0,
+            LineJoinMode = Enum.LineJoinMode.Miter, Enabled = true,
         }),
         Outline2 = ESP_Stuff.functions:create('UIStroke', {
-            Thickness = 1,
-            Enabled = true,
-            LineJoinMode = Enum.LineJoinMode.Miter,
+            Thickness = 1, Enabled = true, LineJoinMode = Enum.LineJoinMode.Miter,
         }),
-        LeftTopFix = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            Size = NewUDim2(0, 1, 0, 6),
-            ZIndex = 999,
-        }),
-        RightTopFix = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            Size = NewUDim2(0, 1, 0, 6),
-            ZIndex = 999,
-        }),
-        BottomSideFix = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            Size = NewUDim2(0, 1, 0, 6),
-            ZIndex = 999,
-        }),
-        BottomRightSideFix = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            Size = NewUDim2(0, 1, 0, 6),
-            ZIndex = 999,
-        }),
-        LeftTop = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            ZIndex = 3,
-        }),
-        LeftSide = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
-        RightTop = ESP_Stuff.functions:create('Frame', {
-            Parent = esp_holder,
-            ZIndex = 3,
-        }),
-        RightSide = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
-        BottomSide = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
-        BottomDown = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
-        BottomRightSide = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
-        BottomRightDown = ESP_Stuff.functions:create('Frame', {Parent = esp_holder}),
+        LeftTopFix        = ESP_Stuff.functions:create('Frame', { Parent = esp_holder, Size = NewUDim2(0,1,0,6), ZIndex = 999 }),
+        RightTopFix       = ESP_Stuff.functions:create('Frame', { Parent = esp_holder, Size = NewUDim2(0,1,0,6), ZIndex = 999 }),
+        BottomSideFix     = ESP_Stuff.functions:create('Frame', { Parent = esp_holder, Size = NewUDim2(0,1,0,6), ZIndex = 999 }),
+        BottomRightSideFix= ESP_Stuff.functions:create('Frame', { Parent = esp_holder, Size = NewUDim2(0,1,0,6), ZIndex = 999 }),
+        LeftTop           = ESP_Stuff.functions:create('Frame', { Parent = esp_holder, ZIndex = 3 }),
+        LeftSide          = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
+        RightTop          = ESP_Stuff.functions:create('Frame', { Parent = esp_holder, ZIndex = 3 }),
+        RightSide         = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
+        BottomSide        = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
+        BottomDown        = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
+        BottomRightSide   = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
+        BottomRightDown   = ESP_Stuff.functions:create('Frame', { Parent = esp_holder }),
         Arrow = ESP_Stuff.functions:create('ImageLabel', {
-            Parent = arrows_holder,
-            BackgroundTransparency = 1,
-            AnchorPoint = NewVector2(0.5, 0.5),
+            Parent = arrows_holder, BackgroundTransparency = 1, AnchorPoint = NewVector2(0.5, 0.5),
         }),
-    })
+    }
 
     drawings.HealthbarGradient.Parent = drawings.Healthbar
     drawings.BoxFillGradient.Parent = drawings.BoxFill
     drawings.Outline.Parent = drawings.Box
     drawings.Outline2.Parent = drawings.Box2
 
-    local update = function()
+    local update = LPH_NO_VIRTUALIZE(function()
         local health_start = 0
         local health_transition_start = 0
         local health_transition_old = 0
         local current_health = 0
+
+        -- cached tool name, updated via events instead of polling
+        local _cached_tool = 'none'
+
+        -- cached bounds, only recalculate when root moves
+        local _lastRootCF = nil
+        local _cachedCF, _cachedSize, _cachedPos = nil, nil, nil
+
+        -- cached gradient colorsequences
+        local _lastGradC1, _lastGradC2, _lastGradC3 = nil, nil, nil
+        local _cachedBoxGradCS = nil
+        local _lastHealthColor = nil
+        local _cachedHealthCS = nil
+        local _lastGrad1, _lastGrad2, _lastGrad3 = nil, nil, nil
+        local _cachedBarCS = nil
 
         local function hide_esp()
             for i = 1, #_ESP_HIDE_KEYS do
                 drawings[_ESP_HIDE_KEYS[i]].Visible = false
             end
         end
+
         local function clear_esp()
-            for _, v in next, drawings do
-                v:Destroy()
-            end
-
-            if esp_connection then
-                esp_connection:Disconnect()
-            end
-
+            for _, v in next, drawings do v:Destroy() end
+            if esp_connection then esp_connection:Disconnect() end
             esp_holder:Destroy()
             arrows_holder:Destroy()
         end
 
         Script.Function.Connection(model.Destroying, clear_esp)
 
-        local _cachedChar = nil
+        -- tool caching via events
+        local function setup_tool_cache(char)
+            char.ChildAdded:Connect(function(child)
+                if child:IsA('Tool') then _cached_tool = child.Name end
+            end)
+            char.ChildRemoved:Connect(function(child)
+                if child:IsA('Tool') then _cached_tool = 'none' end
+            end)
+            -- init from existing tool
+            for _, c in char:GetChildren() do
+                if c:IsA('Tool') then _cached_tool = c.Name break end
+            end
+        end
+
+        if model.Character then setup_tool_cache(model.Character) end
+        model.CharacterAdded:Connect(function(char)
+            _cached_tool = 'none'
+            _lastRootCF = nil
+            setup_tool_cache(char)
+        end)
+
         local _cachedHumanoid = nil
 
-        esp_connection = Script.Function.Connection(RunService['PreRender'], function()
+        esp_connection = Script.Function.Connection(RunService['PreRender'], LPH_NO_VIRTUALIZE(function()
             local char_model = model and model.Character
+            if not char_model then hide_esp() return end
 
-            if char_model then
-                _cachedChar = char_model
-                _cachedHumanoid = char_model:FindFirstChildOfClass('Humanoid') or _cachedHumanoid
+            _cachedHumanoid = char_model:FindFirstChildOfClass('Humanoid') or _cachedHumanoid
+            if not _cachedHumanoid then hide_esp() return end
 
-                if not _cachedHumanoid then return end
+            local humanoid = _cachedHumanoid
+            if humanoid.Health <= 0 then hide_esp() return end
 
-                local root = char_model:FindFirstChild('HumanoidRootPart')
-                local humanoid = _cachedHumanoid
+            local root = char_model:FindFirstChild('HumanoidRootPart')
+            if not root then hide_esp() return end
 
-                if humanoid.Health > 0 then
-                    local cframe, size, position = ESP_Stuff.functions:custom_bounds(char_model)
-                    local max_distance
+            -- only recalculate bounds when root actually moves
+            local rootCF = root.CFrame
+            if rootCF ~= _lastRootCF then
+                _lastRootCF = rootCF
+                _cachedCF, _cachedSize, _cachedPos = ESP_Stuff.functions:custom_bounds(char_model)
+            end
 
-                    if position and TypeOf(position) == 'Vector3' then
-                        if Script.Visuals.ESP['Measurement'] == 'Studs' then
-                            max_distance = (Camera.CFrame.Position - position).Magnitude
-                        elseif Script.Visuals.ESP['Measurement'] == 'Meters' then
-                            max_distance = (Camera.CFrame.Position - position).Magnitude / 3.5714285714
-                        end
+            local position = _cachedPos
+            local size = _cachedSize
+
+            if not position then hide_esp() return end
+
+            local max_distance
+            local measurement = Script.Visuals.ESP['Measurement']
+            local camPos = Camera.CFrame.Position
+            local rawDist = (camPos - position).Magnitude
+
+            if measurement == 'Studs' then
+                max_distance = rawDist
+            elseif measurement == 'Meters' then
+                max_distance = rawDist / 3.5714285714
+            end
+
+            local esp = Script.Visuals.ESP
+            local distCheck = esp['Distance_Check']
+            local teamCheck = esp['Teamcheck']
+
+            if not (esp['Enabled'] and max_distance
+                and TypeOf(max_distance) == 'number'
+                and TypeOf(distCheck) == 'number'
+                and max_distance <= distCheck
+                and (not teamCheck or (model ~= LocalPlayer and ((LocalPlayer.Team ~= model.Team and model.Team) or (not LocalPlayer.Team and not model.Team))))
+            ) then
+                hide_esp() return
+            end
+
+            local pos, on_screen = Camera:WorldToScreenPoint(position)
+            local pz = pos.Z
+            local height = math.tan(MathRad(Camera.FieldOfView / 2)) * 2 * pz
+            local vsy = viewport_size.Y
+            local scale_x = MathFloor((vsy / height) * size.X)
+            local scale_y = MathFloor((vsy / height) * size.Y)
+            local pos_x = MathFloor(pos.X)
+            local pos_y = MathFloor(pos.Y)
+            local box_w = scale_x - 1
+            local box_h = scale_y - 2
+            local box_x = pos_x - MathFloor(scale_x / 2)
+            local box_y = pos_y - MathFloor(scale_y / 2)
+            local is_full_box = esp['Types'] == 'Full'
+            local highlight_active = esp['Highlight'] and highlight_player == model and esp['Highlight_Accent']
+            local accent_color = highlight_active and esp['Highlight_Accent'] or esp['Box_Accent']
+
+            -- full box
+            if on_screen and esp['Boxes'] and is_full_box then
+                drawings.Box.Size        = NewUDim2(0, box_w,     0, box_h + 1)
+                drawings.Box2.Size       = NewUDim2(0, box_w + 2, 0, box_h + 3.5)
+                drawings.BoxFill.Size    = NewUDim2(0, box_w,     0, box_h + 1)
+                drawings.Box.Position    = NewUDim2(0, box_x,     0, box_y)
+                drawings.Box2.Position   = NewUDim2(0, box_x - 1, 0, box_y - 1)
+                drawings.BoxFill.Position= NewUDim2(0, box_x,     0, box_y)
+                drawings.Box.Visible     = true
+                drawings.Box2.Visible    = true
+                drawings.BoxFill.Visible = esp.BoxFill
+                drawings.BoxFill.BackgroundTransparency = esp.BoxFill_Transparency
+
+                if esp.BoxFill_Gradient then
+                    local gc = esp.BoxFill_GradientColors
+                    local c1, c2, c3 = gc[1], gc[2], gc[3]
+                    if c1 ~= _lastGradC1 or c2 ~= _lastGradC2 or c3 ~= _lastGradC3 then
+                        _lastGradC1, _lastGradC2, _lastGradC3 = c1, c2, c3
+                        _cachedBoxGradCS = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0,   c1),
+                            ColorSequenceKeypoint.new(0.5, c2),
+                            ColorSequenceKeypoint.new(1,   c3),
+                        }
                     end
-                    if Script.Visuals.ESP['Enabled'] and max_distance and TypeOf(max_distance) == 'number' and TypeOf(Script.Visuals.ESP['Distance_Check']) == 'number' and max_distance <= Script.Visuals.ESP['Distance_Check'] and (not Script.Visuals.ESP['Teamcheck'] or (model ~= LocalPlayer and ((LocalPlayer.Team ~= model.Team and model.Team) or (not LocalPlayer.Team and not model.Team)))) and char_model and root and humanoid then
-                        local pos, on_screen = Camera:WorldToScreenPoint(position)
-                        local height = math.tan(MathRad(Camera.FieldOfView / 2)) * 2 * pos.Z
-                        local scale_x = MathFloor((viewport_size.Y / height) * size.X)
-                        local scale_y = MathFloor((viewport_size.Y / height) * size.Y)
-                        local pos_x = MathFloor(pos.X)
-                        local pos_y = MathFloor(pos.Y)
-                        local box_w = scale_x - 1
-                        local box_h = scale_y - 2
-                        local box_x = pos_x - MathFloor(scale_x / 2)
-                        local box_y = pos_y - MathFloor(scale_y / 2)
-                        local is_full_box = (Script.Visuals.ESP['Types'] == 'Full')
-
-                        if (on_screen) and Script.Visuals.ESP['Boxes'] and is_full_box then
-                            drawings.Box.Size = NewUDim2(0, box_w, 0, box_h + 1)
-                            drawings.Box2.Size = NewUDim2(0, box_w + 2, 0, box_h + 3.5)
-                            drawings.BoxFill.Size = NewUDim2(0, box_w, 0, box_h + 1)
-                            drawings.Box.Position = NewUDim2(0, box_x, 0, box_y)
-                            drawings.Box2.Position = NewUDim2(0, box_x - 1, 0, box_y - 1)
-                            drawings.BoxFill.Position = NewUDim2(0, box_x, 0, box_y)
-                            drawings.Box.Visible = true
-                            drawings.Box2.Visible = true
-                            drawings.BoxFill.Visible = Script.Visuals.ESP.BoxFill
-                            drawings.BoxFill.BackgroundTransparency = Script.Visuals.ESP.BoxFill_Transparency
-
-                            if Script.Visuals.ESP.BoxFill_Gradient then
-                                drawings.BoxFillGradient.Enabled = true
-                                drawings.BoxFillGradient.Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Script.Visuals.ESP.BoxFill_GradientColors[1]),
-                                    ColorSequenceKeypoint.new(0.5, Script.Visuals.ESP.BoxFill_GradientColors[2]),
-                                    ColorSequenceKeypoint.new(1, Script.Visuals.ESP.BoxFill_GradientColors[3]),
-                                }
-                                drawings.BoxFill.BackgroundColor3 = C3_WHITE
-                            else
-                                drawings.BoxFillGradient.Enabled = false
-                                drawings.BoxFill.BackgroundColor3 = drawings.BoxFill.BackgroundColor3:Lerp(Script.Visuals.ESP.BoxFill_Color, 0.04)
-                            end
-
-                            drawings.Outline2.Color = drawings.Outline2.Color:Lerp((Script.Visuals.ESP['Highlight'] and highlight_player == model and Script.Visuals.ESP['Highlight_Accent']) and Script.Visuals.ESP['Highlight_Accent'] or Script.Visuals.ESP['Box_Accent'], 0.04)
-                        else
-                            drawings.Box.Visible = false
-                            drawings.Box2.Visible = false
-                            drawings.BoxFill.Visible = false
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Boxes'] and Script.Visuals.ESP['Types'] == 'Corner' then
-                            local positions = {
-                                {
-                                    'LeftTopFix',
-                                    box_x,
-                                    box_y,
-                                    1,
-                                    12,
-                                },
-                                {
-                                    'RightTopFix',
-                                    box_x + box_w,
-                                    box_y,
-                                    1,
-                                    12,
-                                },
-                                {
-                                    'BottomSideFix',
-                                    box_x,
-                                    box_y + box_h - 6,
-                                },
-                                {
-                                    'BottomRightSideFix',
-                                    box_x + box_w,
-                                    box_y + box_h - 6,
-                                },
-                                {
-                                    'LeftTop',
-                                    box_x,
-                                    box_y,
-                                    MathFloor(scale_x / 3),
-                                    1,
-                                    NewVector2(0, 0),
-                                },
-                                {
-                                    'LeftSide',
-                                    box_x,
-                                    box_y,
-                                    1,
-                                    MathFloor(scale_y / 4),
-                                    NewVector2(0, 0),
-                                },
-                                {
-                                    'RightTop',
-                                    box_x + box_w + 1,
-                                    box_y,
-                                    MathFloor(scale_x / 3),
-                                    1,
-                                    NewVector2(1, 0),
-                                },
-                                {
-                                    'RightSide',
-                                    box_x + box_w,
-                                    box_y,
-                                    1,
-                                    MathFloor(scale_y / 4),
-                                    NewVector2(0, 0),
-                                },
-                                {
-                                    'BottomSide',
-                                    box_x,
-                                    box_y + box_h + 1,
-                                    1,
-                                    MathFloor(scale_y / 4),
-                                    NewVector2(0, 3),
-                                },
-                                {
-                                    'BottomDown',
-                                    box_x,
-                                    box_y + box_h + 1,
-                                    MathFloor(scale_x / 3),
-                                    1,
-                                    NewVector2(0, 1),
-                                },
-                                {
-                                    'BottomRightSide',
-                                    box_x + box_w + 1,
-                                    box_y + box_h + 1,
-                                    1,
-                                    MathFloor(scale_y / 4),
-                                    NewVector2(1, 1),
-                                },
-                                {
-                                    'BottomRightDown',
-                                    box_x + box_w + 1,
-                                    box_y + box_h + 1,
-                                    MathFloor(scale_x / 3),
-                                    1,
-                                    NewVector2(1, 1),
-                                },
-                            }
-
-                            for _, v in positions do
-                                local name, x_p, y_p, width, t_height, anchor = unpack(v)
-                                local drawing = drawings[name]
-
-                                drawing.Position = NewUDim2(0, x_p, 0, y_p)
-
-                                if not name:find('Fix') then
-                                    drawing.Size = NewUDim2(0, width, 0, t_height)
-                                    drawing.AnchorPoint = anchor
-                                    drawing.BorderSizePixel = 1
-                                else
-                                    drawing.BorderSizePixel = 0
-                                end
-
-                                drawing.Visible = true
-                                drawing.BackgroundColor3 = drawing.BackgroundColor3:Lerp((Script.Visuals.ESP['Highlight'] and highlight_player == model and Script.Visuals.ESP['Highlight_Accent']) and Script.Visuals.ESP['Highlight_Accent'] or Script.Visuals.ESP['Box_Accent'], 0.04)
-                            end
-                        else
-                            for _, name in {
-                                'LeftTopFix',
-                                'RightTopFix',
-                                'BottomSideFix',
-                                'BottomRightSideFix',
-                                'LeftTop',
-                                'LeftSide',
-                                'BottomSide',
-                                'BottomDown',
-                                'RightTop',
-                                'RightSide',
-                                'BottomRightSide',
-                                'BottomRightDown',
-                            }do
-                                drawings[name].Visible = false
-                            end
-                        end
-                        if (not on_screen) and Script.Visuals.ESP['Arrows'] then
-                            drawings.Arrow.Visible = true
-                            drawings.Arrow.Size = NewUDim2(0, Script.Visuals.ESP['Size'], 0, Script.Visuals.ESP['Size'])
-
-                            if Script.Visuals.ESP['Rainbow'] then
-                                local hue = (TickFunc() * 0.5) % 1
-
-                                drawings.Arrow.ImageColor3 = HSV(hue, 1, 1)
-                            else
-                                drawings.Arrow.ImageColor3 = Script.Visuals.ESP['Arrows_Accent']
-                            end
-
-                            local center = viewport_size / 2
-                            local proj = Camera.CFrame:PointToObjectSpace(root.Position)
-                            local angle = math.atan2(proj.Z, proj.X)
-                            local circularX = center.X + math.cos(angle) * Script.Visuals.ESP['Radius']
-                            local circularY = center.Y + math.sin(angle) * Script.Visuals.ESP['Radius']
-
-                            if Script.Visuals.ESP['Points'] == 'Three' then
-                                drawings.Arrow.Image = 'http://www.roblox.com/asset/?id=282305485'
-                            else
-                                drawings.Arrow.Image = 'http://www.roblox.com/asset/?id=15000587389'
-                            end
-
-                            drawings.Arrow.Position = NewUDim2(0, circularX - (drawings.Arrow.Size.X.Offset / 2), 0, circularY - (drawings.Arrow.Size.Y.Offset / 2))
-                            drawings.Arrow.Rotation = math.deg(angle) + 90
-                            drawings.Arrow.ImageTransparency = (100 / 100) * (math.sin(TickFunc() * 4.5) * 0.5 + 0.5)
-                        else
-                            drawings.Arrow.Visible = false
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Names'] then
-                            drawings.name.Visible = true
-                            drawings.name.TextColor3 = drawings.name.TextColor3:Lerp((Script.Visuals.ESP['Highlight'] and highlight_player == model and Script.Visuals.ESP['Highlight_Accent']) and Script.Visuals.ESP['Highlight_Accent'] or Script.Visuals.ESP['Accent'], 0.04)
-
-                            local name_offset = is_full_box and 15 or 12
-
-                            drawings.name.Position = NewUDim2(0, pos_x - 2, 0, box_y - name_offset)
-                        else
-                            drawings.name.Visible = false
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Distance'] then
-                            drawings.distance.TextColor3 = drawings.distance.TextColor3:Lerp((Script.Visuals.ESP['Highlight'] and highlight_player == model and Script.Visuals.ESP['Highlight_Accent']) and Script.Visuals.ESP['Highlight_Accent'] or Script.Visuals.ESP['Distance_Accent'], 0.04)
-
-                            if Script.Visuals.ESP['Measurement'] == 'Studs' then
-                                drawings.distance.Text = string.format('%ds', MathFloor(max_distance))
-                            elseif Script.Visuals.ESP['Measurement'] == 'Meters' then
-                                drawings.distance.Text = string.format('%dm', MathFloor(max_distance))
-                            end
-
-                            drawings.distance.Visible = true
-                        else
-                            drawings.distance.Visible = false
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Weapon'] then
-                            drawings.weapon.Visible = true
-                            drawings.weapon.TextColor3 = drawings.weapon.TextColor3:Lerp((Script.Visuals.ESP['Highlight'] and highlight_player == model and Script.Visuals.ESP['Highlight_Accent']) and Script.Visuals.ESP['Highlight_Accent'] or Script.Visuals.ESP['Weapon_Accent'], 0.04)
-                            drawings.weapon.Text = ESP_Stuff.functions:get_tool_name(char_model)
-                        else
-                            drawings.weapon.Visible = false
-                        end
-
-                        local bar_thickness = Script.Visuals.ESP['Width'] or 2
-                        local bottom_spacing = (Script.Visuals.ESP['Healthbar'] and Script.Visuals.ESP['Position'] == 'Bottom') and (8 + bar_thickness) or 5
-                        local text_base_y = box_y + box_h + (is_full_box and 3 or 0) + bottom_spacing
-
-                        if Script.Visuals.ESP['Distance'] and Script.Visuals.ESP['Weapon'] then
-                            drawings.weapon.Position = NewUDim2(0, pos_x, 0, text_base_y)
-                            drawings.distance.Position = NewUDim2(0, pos_x, 0, text_base_y + 11)
-                        elseif Script.Visuals.ESP['Distance'] then
-                            drawings.distance.Position = NewUDim2(0, pos_x, 0, text_base_y + 1)
-                        elseif Script.Visuals.ESP['Weapon'] then
-                            drawings.weapon.Position = NewUDim2(0, pos_x, 0, text_base_y)
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Healthbar'] then
-                            local health, max_health = MathFloor(humanoid.Health), humanoid.MaxHealth
-                            local health_color = NewColor3(1, 0, 0):lerp(NewColor3(0.7, 0.8, 0), MathClamp(health / max_health, 0, 1))
-
-                            health_color = health_color:lerp(NewColor3(0, 1, 0), MathClamp((health / max_health - 0.5) * 2, 0, 1))
-
-                            local health_offset = MathFloor((max_health - health) / 10) * 0.1
-
-                            do
-                                health_start = health_start or 0
-                                health_transition_start = health_transition_start or health
-                                health_transition_old = health_transition_old or health
-                                current_health = current_health or health
-
-                                if health ~= health_transition_start then
-                                    health_transition_old, health_transition_start, health_start = current_health, health, TickFunc()
-                                end
-                            end
-
-                            local progress = MathClamp((TickFunc() - health_start) / 0.2, 0, 1)
-
-                            current_health = health_transition_old + (health_transition_start - health_transition_old) * progress
-
-                            if progress >= 1 then
-                                current_health, health_transition_old, health_transition_start, health_start = health, health, health, 0
-                            end
-
-                            do
-                                if Script.Visuals.ESP['Healthtext'] and health < max_health then
-                                    drawings.HealthText.Text, drawings.HealthText.Visible = ToString(MathFloor(current_health)), true
-                                else
-                                    drawings.HealthText.Visible = false
-                                end
-
-                                drawings.HealthText.TextColor3 = health_color
-                            end
-
-                            drawings.Healthbar.Visible = true
-                            drawings.BehindHealthbar.Visible = true
-
-                            if Script.Visuals.ESP['Position'] == 'Left' then
-                                drawings.HealthbarGradient.Rotation = -90
-
-                                local bg_y = box_y - 2
-                                local bg_h = box_h + 5
-                                local bg_x = box_x - 5 - bar_thickness
-
-                                drawings.BehindHealthbar.Position = NewUDim2(0, bg_x, 0, bg_y)
-                                drawings.BehindHealthbar.Size = NewUDim2(0, bar_thickness, 0, bg_h)
-
-                                local current_bar_height = MathFloor(bg_h * MathClamp(current_health / max_health, 0, 1))
-
-                                drawings.Healthbar.Position = NewUDim2(0, bg_x, 0, bg_y + (bg_h - current_bar_height))
-                                drawings.Healthbar.Size = NewUDim2(0, bar_thickness, 0, current_bar_height)
-                                health_offset = MathClamp(health_offset, 0, 1)
-                                drawings.HealthbarGradient.Offset = NewVector2(0, -health_offset)
-
-                                local target_text_pos = NewUDim2(0, bg_x - 14, 0, bg_y + (bg_h - current_bar_height) - 4)
-
-                                drawings.HealthText.Position = drawings.HealthText.Position:Lerp(target_text_pos, progress)
-                            elseif Script.Visuals.ESP['Position'] == 'Bottom' then
-                                drawings.HealthbarGradient.Rotation = 0
-
-                                local bg_x = box_x
-                                local bg_w = box_w + 1
-                                local bg_y = box_y + box_h + 5
-
-                                drawings.BehindHealthbar.Position = NewUDim2(0, bg_x, 0, bg_y)
-                                drawings.BehindHealthbar.Size = NewUDim2(0, bg_w, 0, bar_thickness)
-
-                                local current_bar_width = MathFloor(bg_w * MathClamp(current_health / max_health, 0, 1))
-
-                                drawings.Healthbar.Position = NewUDim2(0, bg_x, 0, bg_y)
-                                drawings.Healthbar.Size = NewUDim2(0, current_bar_width, 0, bar_thickness)
-                                health_offset = MathClamp(health_offset, 0, 1)
-                                drawings.HealthbarGradient.Offset = NewVector2(health_offset, 0)
-
-                                local target_text_pos = NewUDim2(0, bg_x + current_bar_width + 4, 0, bg_y - 3)
-
-                                drawings.HealthText.Position = drawings.HealthText.Position:Lerp(target_text_pos, progress)
-                            end
-                            if Script.Visuals.ESP['Lerp'] then
-                                drawings.HealthbarGradient.Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, health_color),
-                                    ColorSequenceKeypoint.new(1, health_color),
-                                }
-                            else
-                                drawings.HealthbarGradient.Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Script.Visuals.ESP['Gradient1']),
-                                    ColorSequenceKeypoint.new(0.5, Script.Visuals.ESP['Gradient2']),
-                                    ColorSequenceKeypoint.new(1, Script.Visuals.ESP['Gradient3']),
-                                }
-                            end
-                        else
-                            drawings.Healthbar.Visible, drawings.HealthText.Visible, drawings.BehindHealthbar.Visible = false, false, false
-                        end
-                        if (on_screen) and Script.Visuals.ESP['Indicator'] then
-                            drawings.Flag1.Visible = true
-                            drawings.Flag2.Visible = true
-
-                            if ESP_Stuff.functions:is_visible(char_model) then
-                                drawings.Flag1.Visible = true
-                                drawings.Flag1.Text = 'Vis'
-                            else
-                                drawings.Flag1.Visible = false
-                                drawings.Flag1.Text = ''
-                            end
-
-                            local box_side = box_x + box_w + (is_full_box and 3 or 0)
-                            local box_top = box_y - (is_full_box and 3 or 0)
-
-                            if Script.Visuals.ESP['Types'] == 'Corner' then
-                                drawings.Flag1.Position = NewUDim2(0, box_side + 4, 0, box_top + 2)
-                                drawings.Flag2.Position = NewUDim2(0, box_side + 4, 0, box_top + 2 + drawings.Flag1.TextBounds.Y)
-                            elseif Script.Visuals.ESP['Types'] == 'Full' then
-                                drawings.Flag1.Position = NewUDim2(0, box_side + 4, 0, box_top)
-                                drawings.Flag2.Position = NewUDim2(0, box_side + 4, 0, box_top + drawings.Flag1.TextBounds.Y)
-                            end
-
-                            drawings.Flag1.Position = drawings.Flag1.Position + NewUDim2(0, drawings.Flag1.TextBounds.X, 0, 0)
-                            drawings.Flag2.Position = drawings.Flag2.Position + NewUDim2(0, drawings.Flag2.TextBounds.X, 0, 0)
-                        else
-                            drawings.Flag1.Visible = false
-                            drawings.Flag2.Visible = false
-                        end
-                    else
-                        hide_esp()
-                    end
+                    drawings.BoxFillGradient.Enabled = true
+                    drawings.BoxFillGradient.Color = _cachedBoxGradCS
+                    drawings.BoxFill.BackgroundColor3 = C3_WHITE
                 else
-                    hide_esp()
+                    drawings.BoxFillGradient.Enabled = false
+                    drawings.BoxFill.BackgroundColor3 = drawings.BoxFill.BackgroundColor3:Lerp(esp.BoxFill_Color, 0.04)
+                end
+
+                drawings.Outline2.Color = drawings.Outline2.Color:Lerp(accent_color, 0.04)
+            else
+                drawings.Box.Visible    = false
+                drawings.Box2.Visible   = false
+                drawings.BoxFill.Visible= false
+            end
+
+            -- corner box
+            if on_screen and esp['Boxes'] and esp['Types'] == 'Corner' then
+                local sx3 = MathFloor(scale_x / 3)
+                local sy4 = MathFloor(scale_y / 4)
+
+                -- update the reusable table in place
+                _corner_positions[1][2]  = box_x;           _corner_positions[1][3]  = box_y
+                _corner_positions[2][2]  = box_x + box_w;   _corner_positions[2][3]  = box_y
+                _corner_positions[3][2]  = box_x;           _corner_positions[3][3]  = box_y + box_h - 6
+                _corner_positions[4][2]  = box_x + box_w;   _corner_positions[4][3]  = box_y + box_h - 6
+                _corner_positions[5][2]  = box_x;           _corner_positions[5][3]  = box_y;  _corner_positions[5][4] = sx3; _corner_positions[5][5] = 1
+                _corner_positions[6][2]  = box_x;           _corner_positions[6][3]  = box_y;  _corner_positions[6][4] = 1;   _corner_positions[6][5] = sy4
+                _corner_positions[7][2]  = box_x+box_w+1;   _corner_positions[7][3]  = box_y;  _corner_positions[7][4] = sx3; _corner_positions[7][5] = 1
+                _corner_positions[8][2]  = box_x + box_w;   _corner_positions[8][3]  = box_y;  _corner_positions[8][4] = 1;   _corner_positions[8][5] = sy4
+                _corner_positions[9][2]  = box_x;           _corner_positions[9][3]  = box_y+box_h+1; _corner_positions[9][4] = 1;   _corner_positions[9][5] = sy4
+                _corner_positions[10][2] = box_x;           _corner_positions[10][3] = box_y+box_h+1; _corner_positions[10][4] = sx3; _corner_positions[10][5] = 1
+                _corner_positions[11][2] = box_x+box_w+1;   _corner_positions[11][3] = box_y+box_h+1; _corner_positions[11][4] = 1;   _corner_positions[11][5] = sy4
+                _corner_positions[12][2] = box_x+box_w+1;   _corner_positions[12][3] = box_y+box_h+1; _corner_positions[12][4] = sx3; _corner_positions[12][5] = 1
+
+                for _, v in _corner_positions do
+                    local name, x_p, y_p, width, t_height, anchor = v[1], v[2], v[3], v[4], v[5], v[6]
+                    local drawing = drawings[name]
+                    drawing.Position = NewUDim2(0, x_p, 0, y_p)
+                    if not name:find('Fix', 1, true) then
+                        drawing.Size = NewUDim2(0, width, 0, t_height)
+                        drawing.AnchorPoint = anchor
+                        drawing.BorderSizePixel = 1
+                    else
+                        drawing.BorderSizePixel = 0
+                    end
+                    drawing.Visible = true
+                    drawing.BackgroundColor3 = drawing.BackgroundColor3:Lerp(accent_color, 0.04)
                 end
             else
-                hide_esp()
+                for i = 1, #_CORNER_HIDE do
+                    drawings[_CORNER_HIDE[i]].Visible = false
+                end
             end
-        end)
-    end
 
-    coroutine.wrap(update)()
+            -- arrow
+            if not on_screen and esp['Arrows'] then
+                drawings.Arrow.Visible = true
+                drawings.Arrow.Size = NewUDim2(0, esp['Size'], 0, esp['Size'])
+
+                if esp['Rainbow'] then
+                    drawings.Arrow.ImageColor3 = HSV((TickFunc() * 0.5) % 1, 1, 1)
+                else
+                    drawings.Arrow.ImageColor3 = esp['Arrows_Accent']
+                end
+
+                local center = viewport_size / 2
+                local proj = Camera.CFrame:PointToObjectSpace(root.Position)
+                local angle = math.atan2(proj.Z, proj.X)
+                local radius = esp['Radius']
+
+                drawings.Arrow.Image = esp['Points'] == 'Three'
+                    and 'http://www.roblox.com/asset/?id=282305485'
+                    or  'http://www.roblox.com/asset/?id=15000587389'
+                drawings.Arrow.Position = NewUDim2(0, center.X + math.cos(angle) * radius - (esp['Size'] / 2), 0, center.Y + math.sin(angle) * radius - (esp['Size'] / 2))
+                drawings.Arrow.Rotation = math.deg(angle) + 90
+                drawings.Arrow.ImageTransparency = math.sin(TickFunc() * 4.5) * 0.5 + 0.5
+            else
+                drawings.Arrow.Visible = false
+            end
+
+            -- name
+            if on_screen and esp['Names'] then
+                drawings.name.Visible = true
+                drawings.name.TextColor3 = drawings.name.TextColor3:Lerp(
+                    highlight_active and esp['Highlight_Accent'] or esp['Accent'], 0.04)
+                drawings.name.Position = NewUDim2(0, pos_x - 2, 0, box_y - (is_full_box and 15 or 12))
+            else
+                drawings.name.Visible = false
+            end
+
+            -- distance
+            if on_screen and esp['Distance'] then
+                drawings.distance.TextColor3 = drawings.distance.TextColor3:Lerp(
+                    highlight_active and esp['Highlight_Accent'] or esp['Distance_Accent'], 0.04)
+                drawings.distance.Text = measurement == 'Studs'
+                    and string.format('%ds', MathFloor(max_distance))
+                    or  string.format('%dm', MathFloor(max_distance))
+                drawings.distance.Visible = true
+            else
+                drawings.distance.Visible = false
+            end
+
+            -- weapon (uses cached tool name)
+            if on_screen and esp['Weapon'] then
+                drawings.weapon.Visible = true
+                drawings.weapon.TextColor3 = drawings.weapon.TextColor3:Lerp(
+                    highlight_active and esp['Highlight_Accent'] or esp['Weapon_Accent'], 0.04)
+                drawings.weapon.Text = _cached_tool
+            else
+                drawings.weapon.Visible = false
+            end
+
+            -- text layout
+            local bar_thickness  = esp['Width'] or 2
+            local bottom_spacing = (esp['Healthbar'] and esp['Position'] == 'Bottom') and (8 + bar_thickness) or 5
+            local text_base_y    = box_y + box_h + (is_full_box and 3 or 0) + bottom_spacing
+
+            if esp['Distance'] and esp['Weapon'] then
+                drawings.weapon.Position   = NewUDim2(0, pos_x, 0, text_base_y)
+                drawings.distance.Position = NewUDim2(0, pos_x, 0, text_base_y + 11)
+            elseif esp['Distance'] then
+                drawings.distance.Position = NewUDim2(0, pos_x, 0, text_base_y + 1)
+            elseif esp['Weapon'] then
+                drawings.weapon.Position   = NewUDim2(0, pos_x, 0, text_base_y)
+            end
+
+            -- healthbar
+            if on_screen and esp['Healthbar'] then
+                local health     = MathFloor(humanoid.Health)
+                local max_health = humanoid.MaxHealth
+                local t          = MathClamp(health / max_health, 0, 1)
+                local health_color = NewColor3(1,0,0):lerp(NewColor3(0.7,0.8,0), t)
+                health_color = health_color:lerp(NewColor3(0,1,0), MathClamp((t - 0.5) * 2, 0, 1))
+
+                do
+                    if health ~= health_transition_start then
+                        health_transition_old  = current_health
+                        health_transition_start = health
+                        health_start = TickFunc()
+                    end
+                end
+
+                local progress = MathClamp((TickFunc() - health_start) / 0.2, 0, 1)
+                current_health = health_transition_old + (health_transition_start - health_transition_old) * progress
+
+                if progress >= 1 then
+                    current_health, health_transition_old, health_transition_start, health_start = health, health, health, 0
+                end
+
+                if esp['Healthtext'] and health < max_health then
+                    drawings.HealthText.Text    = ToString(MathFloor(current_health))
+                    drawings.HealthText.Visible = true
+                else
+                    drawings.HealthText.Visible = false
+                end
+                drawings.HealthText.TextColor3 = health_color
+
+                drawings.Healthbar.Visible      = true
+                drawings.BehindHealthbar.Visible= true
+
+                local position_type = esp['Position']
+
+                if position_type == 'Left' then
+                    drawings.HealthbarGradient.Rotation = -90
+                    local bg_x = box_x - 5 - bar_thickness
+                    local bg_y = box_y - 2
+                    local bg_h = box_h + 5
+                    local current_bar_height = MathFloor(bg_h * MathClamp(current_health / max_health, 0, 1))
+
+                    drawings.BehindHealthbar.Position = NewUDim2(0, bg_x, 0, bg_y)
+                    drawings.BehindHealthbar.Size     = NewUDim2(0, bar_thickness, 0, bg_h)
+                    drawings.Healthbar.Position       = NewUDim2(0, bg_x, 0, bg_y + (bg_h - current_bar_height))
+                    drawings.Healthbar.Size           = NewUDim2(0, bar_thickness, 0, current_bar_height)
+                    drawings.HealthbarGradient.Offset = NewVector2(0, -MathClamp(MathFloor((max_health - health) / 10) * 0.1, 0, 1))
+                    drawings.HealthText.Position      = drawings.HealthText.Position:Lerp(
+                        NewUDim2(0, bg_x - 14, 0, bg_y + (bg_h - current_bar_height) - 4), progress)
+
+                elseif position_type == 'Bottom' then
+                    drawings.HealthbarGradient.Rotation = 0
+                    local bg_x = box_x
+                    local bg_w = box_w + 1
+                    local bg_y = box_y + box_h + 5
+                    local current_bar_width = MathFloor(bg_w * MathClamp(current_health / max_health, 0, 1))
+
+                    drawings.BehindHealthbar.Position = NewUDim2(0, bg_x, 0, bg_y)
+                    drawings.BehindHealthbar.Size     = NewUDim2(0, bg_w, 0, bar_thickness)
+                    drawings.Healthbar.Position       = NewUDim2(0, bg_x, 0, bg_y)
+                    drawings.Healthbar.Size           = NewUDim2(0, current_bar_width, 0, bar_thickness)
+                    drawings.HealthbarGradient.Offset = NewVector2(MathClamp(MathFloor((max_health - health) / 10) * 0.1, 0, 1), 0)
+                    drawings.HealthText.Position      = drawings.HealthText.Position:Lerp(
+                        NewUDim2(0, bg_x + current_bar_width + 4, 0, bg_y - 3), progress)
+                end
+
+                -- cached healthbar colorsequence
+                if esp['Lerp'] then
+                    if health_color ~= _lastHealthColor then
+                        _lastHealthColor = health_color
+                        _cachedHealthCS = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, health_color),
+                            ColorSequenceKeypoint.new(1, health_color),
+                        }
+                    end
+                    drawings.HealthbarGradient.Color = _cachedHealthCS
+                else
+                    local g1, g2, g3 = esp['Gradient1'], esp['Gradient2'], esp['Gradient3']
+                    if g1 ~= _lastGrad1 or g2 ~= _lastGrad2 or g3 ~= _lastGrad3 then
+                        _lastGrad1, _lastGrad2, _lastGrad3 = g1, g2, g3
+                        _cachedBarCS = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0,   g1),
+                            ColorSequenceKeypoint.new(0.5, g2),
+                            ColorSequenceKeypoint.new(1,   g3),
+                        }
+                    end
+                    drawings.HealthbarGradient.Color = _cachedBarCS
+                end
+            else
+                drawings.Healthbar.Visible, drawings.HealthText.Visible, drawings.BehindHealthbar.Visible = false, false, false
+            end
+
+            -- indicator
+            if on_screen and esp['Indicator'] then
+                if ESP_Stuff.functions:is_visible(char_model) then
+                    drawings.Flag1.Visible = true
+                    drawings.Flag1.Text    = 'Vis'
+                else
+                    drawings.Flag1.Visible = false
+                    drawings.Flag1.Text    = ''
+                end
+
+                drawings.Flag2.Visible = true
+
+                local box_side = box_x + box_w + (is_full_box and 3 or 0)
+                local box_top  = box_y - (is_full_box and 3 or 0)
+                local f1y      = drawings.Flag1.TextBounds.Y
+
+                if esp['Types'] == 'Corner' then
+                    drawings.Flag1.Position = NewUDim2(0, box_side + 4 + drawings.Flag1.TextBounds.X, 0, box_top + 2)
+                    drawings.Flag2.Position = NewUDim2(0, box_side + 4 + drawings.Flag2.TextBounds.X, 0, box_top + 2 + f1y)
+                else
+                    drawings.Flag1.Position = NewUDim2(0, box_side + 4 + drawings.Flag1.TextBounds.X, 0, box_top)
+                    drawings.Flag2.Position = NewUDim2(0, box_side + 4 + drawings.Flag2.TextBounds.X, 0, box_top + f1y)
+                end
+            else
+                drawings.Flag1.Visible = false
+                drawings.Flag2.Visible = false
+            end
+        end))
+    end)
+
+    task.spawn(update)
 end)
 
 do
-    for _, v in pairs(Players:GetPlayers())do
+    for _, v in Players:GetPlayers() do
         if v.Name ~= LocalPlayer.Name then
-            coroutine.wrap(ESP)(v)
+            task.spawn(ESP, v)
         end
     end
 
     Script.Function.Connection(Players.PlayerAdded, LPH_NO_VIRTUALIZE(function(v)
-        TaskDelay(1, function()
-            coroutine.wrap(ESP)(v)
-        end)
+        task.delay(1, ESP, v)
     end))
 end
