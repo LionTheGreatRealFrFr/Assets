@@ -1,5 +1,3 @@
-setmetatable(getfenv(), {__index = getgenv().esp_env})
-
 local viewport_size = Camera.ViewportSize
 local raycast_params = RaycastParams.new()
 local _indicator_params = RaycastParams.new()
