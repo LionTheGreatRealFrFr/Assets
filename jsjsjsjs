@@ -2,6 +2,8 @@ local viewport_size = Camera.ViewportSize
 local raycast_params = RaycastParams.new()
 local _indicator_params = RaycastParams.new()
 
+function LPH_NO_VIRTUALIZE = function(f) return f end
+
 do
     raycast_params.FilterDescendantsInstances = { Camera, LocalPlayer.Character }
     raycast_params.FilterType = Enum.RaycastFilterType.Exclude
