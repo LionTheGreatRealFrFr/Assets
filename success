@@ -1,0 +1,53 @@
+local ConsoleColors = {
+    ["Green"] = "0,255,0"
+}
+
+local function InitializeConsoleHook()
+    local coreGui = game:GetService("CoreGui")
+
+    local function parseDevConsoleText(v)
+        if not v:IsA("TextLabel") then return end
+        
+        local text = v.Text
+        local changed = false
+
+        if string.find(text, "%[SUCCESS%]") then
+            local cleanText = string.gsub(text, "%[SUCCESS%]", "")
+            
+            v.Text = '✅ <font color="rgb(' .. ConsoleColors.Green .. ')">' .. cleanText .. '</font>'
+            changed = true
+        end
+        
+        if changed and not v.RichText then
+            v.RichText = true
+        end
+    end
+
+    coreGui.DescendantAdded:Connect(function(inst)
+        if not inst:IsA("TextLabel") then return end
+        
+        local p = inst
+        local isDevConsole = false
+        while p do
+            if p.Name == "DevConsoleMaster" then
+                isDevConsole = true
+                break
+            end
+            p = p.Parent
+        end
+        
+        if isDevConsole then
+            parseDevConsoleText(inst)
+            inst:GetPropertyChangedSignal("Text"):Connect(function()
+                if string.find(inst.Text, "%[SUCCESS%]") then
+                    parseDevConsoleText(inst)
+                end
+            end)
+        end
+    end)
+end
+InitializeConsoleHook()
+
+getgenv().success = function(text)
+    print("[SUCCESS]" .. tostring(text))
+end
