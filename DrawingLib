@@ -5,10 +5,7 @@ local HiddenUI = gethui and gethui() or game:GetService("CoreGui").RobloxGui
 local Drawing = {}
 
 local DrawingDirectory = HiddenUI:FindFirstChild("Drawing Directory") or Instance.new("ScreenGui", HiddenUI)
-DrawingDirectory.Name = "Drawing Directory"
-DrawingDirectory.ResetOnSpawn = false
-DrawingDirectory.IgnoreGuiInset = true
-DrawingDirectory.DisplayOrder = 2147483648
+DrawingDirectory.Name, DrawingDirectory.ResetOnSpawn, DrawingDirectory.IgnoreGuiInset, DrawingDirectory.DisplayOrder = "Drawing Directory", false, true, 2147483648
 
 local BaseObject = setmetatable({
     __SHAPE = "Unknown",
@@ -18,10 +15,12 @@ local BaseObject = setmetatable({
     ZIndex = 0,
     AnchorPoint = Vector2.one / 2,
     Remove = function(Self)
+        if Self.__CLEANUP then Self.__CLEANUP() end
         pcall(Self.__INSTANCE.Destroy, Self.__INSTANCE)
         setmetatable(Self, nil)
     end,
     Destroy = function(Self)
+        if Self.__CLEANUP then Self.__CLEANUP() end
         pcall(Self.__INSTANCE.Destroy, Self.__INSTANCE)
         setmetatable(Self, nil)
     end
@@ -93,10 +92,10 @@ local function ConvertTargetToScreenPosition(Target, PropertyName, OnScreenCheck
         if IsModel then
             local BestDistance = math.huge
             
-            for _, Descendant in Target:GetDescendants() do
-                if not Descendant:IsA("BasePart") then continue end
+            for _, Child in Target:GetChildren() do
+                if not Child:IsA("BasePart") then continue end
                 
-                local ClosestPoint = GetClosestPoint(Descendant, Camera, HalfResolution)
+                local ClosestPoint = GetClosestPoint(Child, Camera, HalfResolution)
                 if not ClosestPoint then continue end
                 
                 local Position, OnScreen = Camera:WorldToViewportPoint(ClosestPoint)
@@ -106,18 +105,17 @@ local function ConvertTargetToScreenPosition(Target, PropertyName, OnScreenCheck
                 if Distance >= BestDistance then continue end
                 
                 BestDistance = Distance
-                TargetPart = Descendant
             end
-            
-            if not TargetPart then return end
+            TargetPart = Target:FindFirstChild("UpperTorso") or Target:FindFirstChild("Torso")
         else
             TargetPart = Target
         end
         
+        if not TargetPart then return end
         local ClosestPoint = GetClosestPoint(TargetPart, Camera, HalfResolution)
         if not ClosestPoint or not select(2, Camera:WorldToViewportPoint(ClosestPoint)) then return end
         
-        local FinalPosition = IsModel and Camera:WorldToViewportPoint(Target:GetPivot().p) or Camera:WorldToViewportPoint(TargetPart.Position)
+        local FinalPosition = IsModel and Camera:WorldToViewportPoint(TargetPart.Name:find("Torso") and TargetPart.Position or Target:GetPivot().p) or Camera:WorldToViewportPoint(TargetPart.Position)
         return Vector2.new(FinalPosition.X, FinalPosition.Y)
     elseif Type == "Vector3" then
         local Camera = GetCamera()
@@ -140,7 +138,7 @@ local function CreateDrawingObject(ObjectType, UpdateFunction)
     return setmetatable({}, {
         __index = ObjectType,
         __newindex = function(_, Key, Value)
-            if table.find({ "__SHAPE", "__INSTANCE", "Remove", "Destroy", "Trace" }, Key) then
+            if table.find({ "__SHAPE", "__INSTANCE", "__CLEANUP", "Remove", "Destroy", "Trace" }, Key) then
                 error("You Cannot Set " .. Key)
             elseif ObjectType.Stroke and Key == "Stroke" or ObjectType.Gradient and Key == "Gradient" or ObjectType.Outlines and Key == "Outlines" or ObjectType.AutoRotation and Key == "AutoRotation" then
                 error("Cannot Set " .. Key .. " Directly, Use " .. ObjectType.__SHAPE .. "Drawing." .. Key .. ".PropertyName")
@@ -172,7 +170,7 @@ local function CreateDrawingObject(ObjectType, UpdateFunction)
             
             assert(ObjectType[Key] ~= nil, "Invalid Property '" .. Key .. "' For " .. ObjectType.__SHAPE)
             
-            if table.find({"Position", "From", "To", "Size"}, Key) then
+            if table.find(ObjectType.__SHAPE == "Text" and {"Position", "From", "To"} or {"Position", "From", "To", "Size"}, Key) then
                 assert(typeof(Value) == "Vector2" or typeof(Value) == "UDim2", "Property '" .. Key .. "' Expects Vector2 Or UDim2 But Got " .. typeof(Value))
                 Value = typeof(Value) == "UDim2" and ConvertUDim2ToVector2(Value) or Value
             else
@@ -185,7 +183,7 @@ local function CreateDrawingObject(ObjectType, UpdateFunction)
     })
 end
 
-local function ConvertTransparency(Transparency)
+local function FlipTransparency(Transparency)
     return math.clamp(1 - Transparency, 0, 1)
 end
 
@@ -201,6 +199,12 @@ local function ApplyAutoRotation(Parent, OnTick)
         else
             Parent.Rotation = AutoRotation.Start + ((Parent.Rotation - AutoRotation.Start + Step) % Range)
         end
+    end
+    
+    local function Cleanup()
+        local ID = table.find(ActiveAutoRotations, Tick)
+        if not ID then return end
+        table.remove(ActiveAutoRotations, ID)
     end
     
     return setmetatable({}, {
@@ -227,12 +231,15 @@ local function ApplyAutoRotation(Parent, OnTick)
                     HeartbeatConnection = nil
                 end)
             else
-                local ID = table.find(ActiveAutoRotations, Tick)
-                if not ID then return end
-                table.remove(ActiveAutoRotations, ID)
+                Cleanup()
             end
         end,
+        __metatable = { Cleanup = Cleanup },
     })
+end
+
+local function GetAutoRotationCleanup(AutoRotation)
+    return getmetatable(AutoRotation) and getmetatable(AutoRotation).Cleanup
 end
 
 local function ApplyRoundness(Parent)
@@ -266,8 +273,7 @@ local function ApplyGradient(Parent)
         __index = Properties,
         __newindex = function(_, Key, Value)
             if Properties[Key] == nil or Key == "AutoRotation" then return end
-            Properties[Key] = Value
-            Gradient[Key] = Value
+            Properties[Key], Gradient[Key] = Value, Value
         end,
     })
 end
@@ -286,7 +292,7 @@ local function ApplyStroke(Parent)
     
     for Property, Value in Stroke do
         if Property == "Gradient" or UIStroke[Property] == nil then continue end
-        UIStroke[Property] = Property == "Transparency" and ConvertTransparency(Value) or Value
+        UIStroke[Property] = Property == "Transparency" and FlipTransparency(Value) or Value
     end
     
     return setmetatable({}, {
@@ -299,9 +305,8 @@ local function ApplyStroke(Parent)
             assert(UIStroke[Key] ~= nil, "Invalid Property '" .. Key .. "' For Stroke Object")
             AssertType(Value, typeof(Stroke[Key]), Key)
             
-            Value = Key == "Transparency" and ConvertTransparency(Value) or Value
-            Stroke[Key] = Value
-            UIStroke[Key] = Value
+            Value = Key == "Transparency" and FlipTransparency(Value) or Value
+            Stroke[Key], UIStroke[Key] = Value, Value
         end
     })
 end
@@ -311,6 +316,40 @@ end
 --// DRAWING FUNCTIONS
 
 
+
+local function DrawText()
+    local Text = BaseObject + {
+        __SHAPE = "Text",
+        __INSTANCE = Instance.new("TextLabel", DrawingDirectory),
+        Text = "",
+        Size = 14,
+        Position = Vector2.zero,
+        Rotation = 0,
+        Bold = false,
+        Italic = false,
+        Underline = false,
+        Strikethrough = false,
+        Outline = false,
+        OutlineColor = Color3.new(0, 0, 0),
+        Font = Font.new("rbxasset://fonts/families/RobotoMono.json"),
+    }
+
+    local Label = Text.__INSTANCE
+    Label.BorderSizePixel, Label.BackgroundTransparency, Label.TextXAlignment, Label.TextYAlignment = 0, 1, Enum.TextXAlignment.Left, Enum.TextYAlignment.Top
+
+    local function UpdateText()
+        Label.Visible, Label.TextTransparency, Label.TextColor3, Label.ZIndex, Label.AnchorPoint = Text.Visible, FlipTransparency(Text.Transparency), Text.Color, Text.ZIndex, Text.AnchorPoint
+        Label.Text, Label.TextSize, Label.Position, Label.Rotation = Text.Text, Text.Size, UDim2.fromOffset(Text.Position.X, Text.Position.Y), Text.Rotation
+        Label.FontFace = Font.new(
+            Text.Font.Family,
+            Text.Bold and Enum.FontWeight.Bold or Enum.FontWeight.Regular,
+            Text.Italic and Enum.FontStyle.Italic or Enum.FontStyle.Normal
+        )
+        Label.TextStrokeColor3, Label.TextStrokeTransparency, Label.Size = Text.OutlineColor, Text.Outline and 0 or 1, UDim2.new(0, 1000, 0, 1000)
+    end; UpdateText()
+
+    return CreateDrawingObject(Text, UpdateText)
+end
 
 local function DrawLine(Parent)
     local Line = BaseObject + {
@@ -332,22 +371,16 @@ local function DrawLine(Parent)
         local Direction = (Line.To - Line.From)
         local Center = (Line.To + Line.From) / 2
         
-        Frame.Visible = Line.Visible
-        Frame.BackgroundTransparency = ConvertTransparency(Line.Transparency)
-        Frame.BackgroundColor3 = Line.Color
-        Frame.ZIndex = Line.ZIndex
-        Frame.AnchorPoint = Line.AnchorPoint
-        
-        Frame.Size = UDim2.fromOffset(Direction.Magnitude, Line.Thickness)
-        Frame.Position = UDim2.fromOffset(Center.X, Center.Y)
-        Frame.Rotation = math.deg(math.atan2(Direction.Y, Direction.X))
+        Frame.Visible, Frame.BackgroundTransparency, Frame.BackgroundColor3, Frame.ZIndex, Frame.AnchorPoint = Line.Visible, FlipTransparency(Line.Transparency), Line.Color, Line.ZIndex, Line.AnchorPoint
+        Frame.Size, Frame.Position, Frame.Rotation = UDim2.fromOffset(Direction.Magnitude, Line.Thickness), UDim2.fromOffset(Center.X, Center.Y), math.deg(math.atan2(Direction.Y, Direction.X))
     end; UpdateLine()
+    
+    Line.__UPDATELINE = UpdateLine
     
     function Line:Trace(From, To)
         From, To = ConvertTargetToScreenPosition(From, "From"), ConvertTargetToScreenPosition(To, "To")
         if From and To then
-            Line.Visible = true
-            Line.From, Line.To = From, To
+            Line.Visible, Line.From, Line.To = true, From, To
         else
             Line.Visible = false
         end
@@ -375,16 +408,19 @@ local function DrawSquare()
     Square.Gradient = ApplyGradient(Frame)
     Square.AutoRotation = ApplyAutoRotation(Frame)
     
+    Square.__CLEANUP = function()
+        local Cleanup = GetAutoRotationCleanup(Square.AutoRotation)
+        if Cleanup then Cleanup() end
+        local GradientCleanup = GetAutoRotationCleanup(Square.Gradient.AutoRotation)
+        if GradientCleanup then GradientCleanup() end
+        local StrokeGradientCleanup = GetAutoRotationCleanup(Square.Stroke.Gradient.AutoRotation)
+        if StrokeGradientCleanup then StrokeGradientCleanup() end
+    end
+    
     local function UpdateSquare()
-        Frame.Visible = Square.Visible
-        Frame.BackgroundTransparency = Square.Filled and ConvertTransparency(Square.Transparency) or 1
-        Frame.BackgroundColor3 = Square.Color
-        Frame.ZIndex = Square.ZIndex
-        Frame.AnchorPoint = Square.AnchorPoint
-        
-        Frame.Size = UDim2.fromOffset(Square.Size.X, Square.Size.Y)
-        Frame.Position = UDim2.fromOffset(Square.Position.X, Square.Position.Y)
-        
+        Frame.Visible, Frame.BackgroundTransparency, Frame.BackgroundColor3, Frame.ZIndex, Frame.AnchorPoint = Square.Visible, Square.Filled and FlipTransparency(Square.Transparency) or 1, Square.Color, Square.ZIndex, Square.AnchorPoint
+        Frame.Size, Frame.Position = UDim2.fromOffset(Square.Size.X, Square.Size.Y), UDim2.fromOffset(Square.Position.X, Square.Position.Y)
+        Frame.Rotation = Square.AutoRotation.Enabled and Frame.Rotation or Square.Rotation
         Square.Stroke.Enabled = not Square.Filled or Square.Stroke.Enabled
     end; UpdateSquare()
     
@@ -409,19 +445,20 @@ local function DrawCircle()
     Circle.Gradient = ApplyGradient(Frame)
     Circle.AutoRotation = ApplyAutoRotation(Frame)
     
-    Circle.Rounder.CornerRadius = UDim.new(1, 0)
-    Circle.Stroke.LineJoinMode = Enum.LineJoinMode.Round
+    Circle.__CLEANUP = function()
+        local Cleanup = GetAutoRotationCleanup(Circle.AutoRotation)
+        if Cleanup then Cleanup() end
+        local GradientCleanup = GetAutoRotationCleanup(Circle.Gradient.AutoRotation)
+        if GradientCleanup then GradientCleanup() end
+        local StrokeGradientCleanup = GetAutoRotationCleanup(Circle.Stroke.Gradient.AutoRotation)
+        if StrokeGradientCleanup then StrokeGradientCleanup() end
+    end
+    
+    Circle.Rounder.CornerRadius, Circle.Stroke.LineJoinMode = UDim.new(1, 0), Enum.LineJoinMode.Round
     
     local function UpdateCircle()
-        Frame.Visible = Circle.Visible
-        Frame.BackgroundTransparency = Circle.Filled and ConvertTransparency(Circle.Transparency) or 1
-        Frame.BackgroundColor3 = Circle.Color
-        Frame.ZIndex = Circle.ZIndex
-        Frame.AnchorPoint = Circle.AnchorPoint
-        
-        Frame.Size = UDim2.fromOffset(Circle.Radius * 2, Circle.Radius * 2)
-        Frame.Position = UDim2.fromOffset(Circle.Position.X, Circle.Position.Y)
-        
+        Frame.Visible, Frame.BackgroundTransparency, Frame.BackgroundColor3, Frame.ZIndex, Frame.AnchorPoint = Circle.Visible, Circle.Filled and FlipTransparency(Circle.Transparency) or 1, Circle.Color, Circle.ZIndex, Circle.AnchorPoint
+        Frame.Size, Frame.Position = UDim2.fromOffset(Circle.Radius * 2, Circle.Radius * 2), UDim2.fromOffset(Circle.Position.X, Circle.Position.Y)
         Circle.Stroke.Enabled = not Circle.Filled or Circle.Stroke.Enabled
     end; UpdateCircle()
     
@@ -439,6 +476,7 @@ local function DrawPolygon(ShapeName, DefaultPoints)
         Filled = true,
         Radius = 0,
         Rotation = 0,
+        Color = Color3.new(1, 1, 1),
     }
     
     if IsNGon then
@@ -453,36 +491,40 @@ local function DrawPolygon(ShapeName, DefaultPoints)
     end
     
     local Folder = Polygon.__INSTANCE
+    
     local Lines = {
-        Inner = { DrawLine(Folder) },
-        Outer = {}
+        FillLines = {},
+        Outlines = {}
     }
+    
     for Index = 1, SideCount do
-        table.insert(Lines.Outer, DrawLine(Folder))
+        table.insert(Lines.Outlines, DrawLine(Folder))
     end
     
-    --// Gradient
+    local FillLinePool = {}
     
-    local GradientAutoRotation = setmetatable({}, {
-        __index = function(_, Key)
-            return Lines.Inner[1] and Lines.Inner[1].Gradient.AutoRotation[Key]
-        end,
-        __newindex = function(_, Key, Value)
-            for _, Line in Lines.Inner do Line.Gradient.AutoRotation[Key] = Value end
-        end,
-    })
+    local function AcquireFillFrame()
+        local Frame = table.remove(FillLinePool)
+        if Frame then
+            Frame.Parent = Folder
+            return Frame
+        end
+        local Frame = Instance.new("Frame")
+        Frame.BorderSizePixel, Frame.BackgroundColor3, Frame.AnchorPoint, Frame.Parent = 0, Color3.new(1, 1, 1), Vector2.new(0.5, 0.5), Folder
+        return Frame
+    end
     
-    local Gradient = setmetatable({}, {
-        __index = function(_, Key)
-            if Key == "AutoRotation" then return GradientAutoRotation end
-            return Lines.Inner[1] and Lines.Inner[1].Gradient[Key]
-        end,
-        __newindex = function(_, Key, Value)
-            for _, Line in Lines.Inner do Line.Gradient[Key] = Value end
-        end,
-    })
+    local function ReleaseFillFrame(Frame)
+        Frame.Parent = nil
+        table.insert(FillLinePool, Frame)
+    end
     
-    Polygon.Gradient = Gradient
+    local function ReleaseAllFillLines()
+        for Index = #Lines.FillLines, 1, -1 do
+            ReleaseFillFrame(Lines.FillLines[Index])
+            Lines.FillLines[Index] = nil
+        end
+    end
     
     
     
@@ -490,7 +532,7 @@ local function DrawPolygon(ShapeName, DefaultPoints)
     
     
     
-    local Outlines = {
+    local OutlineProps = {
         Visible = true,
         Transparency = 1,
         Color = Color3.new(1, 1, 1),
@@ -500,55 +542,55 @@ local function DrawPolygon(ShapeName, DefaultPoints)
     
     local OutlinesGradientAutoRotation = setmetatable({}, {
         __index = function(_, Key)
-            return Lines.Outer[1].Gradient.AutoRotation[Key]
+            return Lines.Outlines[1].Gradient.AutoRotation[Key]
         end,
         __newindex = function(_, Key, Value)
-            for _, Line in Lines.Outer do Line.Gradient.AutoRotation[Key] = Value end
+            for _, Line in Lines.Outlines do Line.Gradient.AutoRotation[Key] = Value end
         end
     })
     
     local OutlinesGradient = setmetatable({}, {
         __index = function(_, Key)
             if Key == "AutoRotation" then return OutlinesGradientAutoRotation end
-            return Lines.Outer[1].Gradient[Key]
+            return Lines.Outlines[1].Gradient[Key]
         end,
         __newindex = function(_, Key, Value)
-            for _, Line in Lines.Outer do Line.Gradient[Key] = Value end
+            for _, Line in Lines.Outlines do Line.Gradient[Key] = Value end
         end
     })
     
-    Outlines.Gradient = OutlinesGradient
+    OutlineProps.Gradient = OutlinesGradient
     
     local OutlinesStrokeGradientAutoRotation = setmetatable({}, {
         __index = function(_, Key)
-            return Lines.Outer[1].Stroke.Gradient.AutoRotation[Key]
+            return Lines.Outlines[1].Stroke.Gradient.AutoRotation[Key]
         end,
         __newindex = function(_, Key, Value)
-            for _, Line in Lines.Outer do Line.Stroke.Gradient.AutoRotation[Key] = Value end
+            for _, Line in Lines.Outlines do Line.Stroke.Gradient.AutoRotation[Key] = Value end
         end
     })
     
     local OutlinesStrokeGradient = setmetatable({}, {
         __index = function(_, Key)
             if Key == "AutoRotation" then return OutlinesStrokeGradientAutoRotation end
-            return Lines.Outer[1].Stroke.Gradient[Key]
+            return Lines.Outlines[1].Stroke.Gradient[Key]
         end,
         __newindex = function(_, Key, Value)
-            for _, Line in Lines.Outer do Line.Stroke.Gradient[Key] = Value end
+            for _, Line in Lines.Outlines do Line.Stroke.Gradient[Key] = Value end
         end
     })
     
     local OutlinesStroke = setmetatable({}, {
         __index = function(_, Key)
             if Key == "Gradient" then return OutlinesStrokeGradient end
-            return Lines.Outer[1].Stroke[Key]
+            return Lines.Outlines[1].Stroke[Key]
         end,
         __newindex = function(_, Key, Value)
-            for _, Line in Lines.Outer do Line.Stroke[Key] = Value end
+            for _, Line in Lines.Outlines do Line.Stroke[Key] = Value end
         end,
     })
     
-    Outlines.Stroke = OutlinesStroke
+    OutlineProps.Stroke = OutlinesStroke
     
     
     
@@ -563,11 +605,14 @@ local function DrawPolygon(ShapeName, DefaultPoints)
         local Count = IsNGon and Polygon.Points or SideCount
         
         if Polygon.Radius > 0 then
+            local TwoPi = math.pi * 2
+            local HalfPi = math.pi / 2
+            local Radius = Polygon.Radius
             for Index = 1, Count do
-                local Angle = (Index / Count) * (math.pi * 2) - math.pi / 2
+                local Angle = (Index / Count) * TwoPi - HalfPi
                 table.insert(Points, Vector2.new(
-                    OffsetX + math.cos(Angle) * Polygon.Radius,
-                    OffsetY + math.sin(Angle) * Polygon.Radius
+                    OffsetX + math.cos(Angle) * Radius,
+                    OffsetY + math.sin(Angle) * Radius
                 ))
             end
         else
@@ -590,11 +635,14 @@ local function DrawPolygon(ShapeName, DefaultPoints)
             local Radians = math.rad(Polygon.Rotation)
             local Cos, Sin = math.cos(Radians), math.sin(Radians)
             local RotatedPoints = {}
+            local PosX = Polygon.Position.X
+            local PosY = Polygon.Position.Y
             for _, Point in Points do
-                local DeltaX, DeltaY = Point.X - Polygon.Position.X, Point.Y - Polygon.Position.Y
+                local DX = Point.X - PosX
+                local DY = Point.Y - PosY
                 table.insert(RotatedPoints, Vector2.new(
-                    Polygon.Position.X + DeltaX * Cos - DeltaY * Sin,
-                    Polygon.Position.Y + DeltaX * Sin + DeltaY * Cos
+                    PosX + DX * Cos - DY * Sin,
+                    PosY + DX * Sin + DY * Cos
                 ))
             end
             Points = RotatedPoints
@@ -603,122 +651,155 @@ local function DrawPolygon(ShapeName, DefaultPoints)
         return Points
     end
     
-    local function LineIntersection(PointA, PointB, ScanY)
-        if not ((PointA.Y <= ScanY and PointB.Y >= ScanY) or (PointA.Y >= ScanY and PointB.Y <= ScanY)) then return end
-        if PointA.Y == PointB.Y then return end
-        local Progress = (ScanY - PointA.Y) / (PointB.Y - PointA.Y)
-        if not (Progress >= 0 and Progress < 1) then return end
-        return PointA.X + Progress * (PointB.X - PointA.X)
-    end
+    local CachedEdges = {}
+    local CachedIntersections = {}
+    local UpdatePending = false
     
     local function UpdatePolygon()
         local Points = GetPoints()
         local PointCount = #Points
         
-        local Edges = {}
+        while #Lines.Outlines < PointCount do
+            table.insert(Lines.Outlines, DrawLine(Folder))
+        end
+        
+        local OutlineVisible = Polygon.Visible and OutlineProps.Visible
+        local OutlineTransp = OutlineProps.Transparency
+        local OutlineColor = OutlineProps.Color
+        local OutlineThickness = OutlineProps.Thickness
+        local OutlineZIndex = OutlineProps.ZIndex + 1
+        local OutlineStrokeEnabled = OutlineProps.Stroke.Enabled
+        local OutlineGradEnabled = OutlineProps.Gradient.Enabled
+        local HalfThickness = OutlineThickness / 2
+        local CornerRadius = UDim.new(1, 0)
         
         for Index = 1, PointCount do
-            table.insert(Edges, { Points[Index], Points[Index % PointCount + 1] })
-        end
-        
-        while #Lines.Outer < PointCount do
-            table.insert(Lines.Outer, DrawLine(Folder))
-            Outlines.Stroke.Gradient.AutoRotation.Enabled = Outlines.Gradient.Enabled
-            Outlines.Gradient.AutoRotation.Enabled = Outlines.Gradient.Enabled
-        end
-        
-        for Index, Edge in Edges do
-            local Line = Lines.Outer[Index]
-            local Direction = Edge[2] - Edge[1]
-            local Extend = Direction.Magnitude > 0 and Direction.Unit * (Outlines.Thickness / 2) or Vector2.zero
+            local A = Points[Index]
+            local B = Points[Index % PointCount + 1]
+            local Dir = B - A
+            local Ext = Dir.Magnitude > 0 and Dir.Unit * HalfThickness or Vector2.zero
+            local Line = Lines.Outlines[Index]
             
-            Line.From = Edge[1] - Extend
-            Line.To = Edge[2] + Extend
-            Line.Visible = Polygon.Visible and Outlines.Visible
-            Line.Transparency = Outlines.Transparency
-            Line.Color = Outlines.Color
-            Line.Thickness = Outlines.Thickness
-            Line.ZIndex = Outlines.ZIndex + 1
-            Line.Rounder.CornerRadius = UDim.new(1, 0)
-            Line.Stroke.Enabled = Outlines.Stroke.Enabled
-            Line.Gradient.Enabled = Outlines.Gradient.Enabled
-            Line.Stroke.LineJoinMode = Enum.LineJoinMode.Round
+            Line.From, Line.To = A - Ext, B + Ext
+            Line.Visible, Line.Transparency, Line.Color, Line.Thickness, Line.ZIndex = OutlineVisible, OutlineTransp, OutlineColor, OutlineThickness, OutlineZIndex
+            Line.Rounder.CornerRadius = CornerRadius
+            Line.Stroke.Enabled, Line.Stroke.LineJoinMode = OutlineStrokeEnabled, Enum.LineJoinMode.Round
+            Line.Gradient.Enabled = OutlineGradEnabled
         end
         
-        for Index = PointCount + 1, #Lines.Outer do
-            Lines.Outer[Index].Visible = false
+        for Index = PointCount + 1, #Lines.Outlines do
+            Lines.Outlines[Index].Visible = false
         end
         
-        local MinY, MaxY = math.huge, -math.huge
+        if not Polygon.Filled then
+            ReleaseAllFillLines()
+            return
+        end
+        
+        local MinY = math.huge
+        local MaxY = -math.huge
         
         for _, Point in Points do
-            MinY = math.min(MinY, Point.Y)
-            MaxY = math.max(MaxY, Point.Y)
+            if Point.Y < MinY then MinY = Point.Y end
+            if Point.Y > MaxY then MaxY = Point.Y end
         end
         
-        MinY = math.floor(MinY)
-        MaxY = math.ceil(MaxY)
+        MinY, MaxY = math.floor(MinY), math.ceil(MaxY)
         
-        local LineCount = MaxY - MinY + 1
-        
-        while LineCount > #Lines.Inner do
-            table.insert(Lines.Inner, DrawLine(Folder))
-        end
-        
-        for Index = LineCount + 1, #Lines.Inner do
-            Lines.Inner[Index].Visible = false
-        end
-        
-        if Polygon.Filled then
-            for Y = MinY, MaxY do
-                local LineIndex = Y - MinY + 1
-                local FillLine = Lines.Inner[LineIndex]
-                local Intersections = {}
-                
-                for _, Edge in Edges do
-                    local Intersect = LineIntersection(Edge[1], Edge[2], Y)
-                    if Intersect then table.insert(Intersections, Intersect) end
-                end
-                
-                if #Intersections >= 2 then
-                    table.sort(Intersections)
-                    
-                    for I = 1, #Intersections - 1, 2 do
-                        FillLine.From = Vector2.new(Intersections[I], Y)
-                        FillLine.To = Vector2.new(Intersections[I + 1], Y)
-                        FillLine.Thickness = 1
-                        FillLine.Stroke.Enabled = false
-                        FillLine.Visible = Polygon.Visible
-                        FillLine.Color = Polygon.Color
-                        FillLine.Transparency = Polygon.Transparency
-                        FillLine.ZIndex = Polygon.ZIndex
-                        
-                        LineIndex = LineIndex + 1
-                        if LineIndex <= #Lines.Inner then
-                            FillLine = Lines.Inner[LineIndex]
-                        end
-                    end
-                else
-                    FillLine.Visible = false
-                end
+        for Index = 1, PointCount do
+            local Edge = CachedEdges[Index]
+            if not Edge then
+                CachedEdges[Index] = { Points[Index], Points[Index % PointCount + 1] }
+            else
+                Edge[1], Edge[2] = Points[Index], Points[Index % PointCount + 1]
             end
-        else
-            for _, Line in Lines.Inner do Line.Visible = false end
         end
-    end; UpdatePolygon()
+        for Index = PointCount + 1, #CachedEdges do
+            CachedEdges[Index] = nil
+        end
+        
+        local FillColor = Polygon.Color
+        local FillTransparency = FlipTransparency(Polygon.Transparency)
+        local FillZIndex = Polygon.ZIndex
+        local FillVisible = Polygon.Visible
+        
+        local FillLineIndex = 1
+        
+        for Y = MinY, MaxY do
+            local ICount = 0
+            
+            for _, Edge in CachedEdges do
+                local A, B = Edge[1], Edge[2]
+                if not ((A.Y <= Y and B.Y >= Y) or (A.Y >= Y and B.Y <= Y)) then continue end
+                if A.Y == B.Y then continue end
+                local T = (Y - A.Y) / (B.Y - A.Y)
+                if not (T >= 0 and T < 1) then continue end
+                ICount = ICount + 1
+                CachedIntersections[ICount] = A.X + T * (B.X - A.X)
+            end
+            
+            if ICount < 2 then continue end
+            
+            for I = 2, ICount do
+                local V = CachedIntersections[I]
+                local J = I - 1
+                while J >= 1 and CachedIntersections[J] > V do
+                    CachedIntersections[J + 1] = CachedIntersections[J]
+                    J = J - 1
+                end
+                CachedIntersections[J + 1] = V
+            end
+            
+            for I = 1, ICount - 1, 2 do
+                local X1 = CachedIntersections[I]
+                local X2 = CachedIntersections[I + 1]
+                
+                local Frame = Lines.FillLines[FillLineIndex]
+                if not Frame then
+                    Frame = AcquireFillFrame()
+                    Lines.FillLines[FillLineIndex] = Frame
+                end
+                
+                local Width = X2 - X1
+                local CX = X1 + Width * 0.5
+                
+                Frame.Visible, Frame.BackgroundColor3, Frame.BackgroundTransparency, Frame.ZIndex = FillVisible, FillColor, FillTransparency, FillZIndex
+                Frame.Size, Frame.Position = UDim2.fromOffset(Width, 1), UDim2.fromOffset(CX, Y)
+                
+                FillLineIndex = FillLineIndex + 1
+            end
+        end
+        
+        for Index = FillLineIndex, #Lines.FillLines do
+            ReleaseFillFrame(Lines.FillLines[Index])
+            Lines.FillLines[Index] = nil
+        end
+    end
+    
+    local function DeferredUpdate()
+        if UpdatePending then return end
+        UpdatePending = true
+        task.defer(function()
+            UpdatePending = false
+            UpdatePolygon()
+        end)
+    end
+    
+    local WrappedUpdate = IsNGon and DeferredUpdate or UpdatePolygon
+    
+    UpdatePolygon()
     
     Polygon.Outlines = setmetatable({}, {
         __index = function(_, Key)
-            return Outlines[Key]
+            return OutlineProps[Key]
         end,
         __newindex = function(_, Key, Value)
             if Key == "Stroke" or Key == "Gradient" then
                 error("Cannot set " .. Key .. " directly, use Outlines." .. Key .. ".PropertyName")
             end
-            assert(Outlines[Key] ~= nil, "Invalid property '" .. Key .. "' for Outlines")
-            AssertType(Value, typeof(Outlines[Key]), Key)
-            
-            Outlines[Key] = Value
+            assert(OutlineProps[Key] ~= nil, "Invalid property '" .. Key .. "' for Outlines")
+            AssertType(Value, typeof(OutlineProps[Key]), Key)
+            OutlineProps[Key] = Value
             UpdatePolygon()
         end,
     })
@@ -728,8 +809,14 @@ local function DrawPolygon(ShapeName, DefaultPoints)
         Polygon.Rotation = AutoRotation.Start + ((Polygon.Rotation - AutoRotation.Start + Step) % Range)
         UpdatePolygon()
     end)
-        
-    return CreateDrawingObject(Polygon, UpdatePolygon)
+    
+    Polygon.__CLEANUP = function()
+        local Cleanup = GetAutoRotationCleanup(Polygon.AutoRotation)
+        if Cleanup then Cleanup() end
+        ReleaseAllFillLines()
+    end
+    
+    return CreateDrawingObject(Polygon, WrappedUpdate)
 end
 
 local function CreateEmptyPoints(Amount)
@@ -785,6 +872,7 @@ local function DrawNGon()
 end
 
 local DrawingFunctions = {
+    ["text"] = DrawText,
     ["line"] = DrawLine,
     ["square"] = DrawSquare,
     ["circle"] = DrawCircle,
